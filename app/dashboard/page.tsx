@@ -18,6 +18,7 @@ type Trip = {
 };
 
 type FilterType = "all" | "favorite" | "public";
+type UserPlan = "free" | "pro";
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null);
@@ -27,6 +28,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [plan, setPlan] = useState<UserPlan>("free");
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -52,18 +55,31 @@ export default function DashboardPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("trip_records")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+      const [tripsResult, profileResult] = await Promise.all([
+        supabase
+          .from("trip_records")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
 
-      if (error) {
-        console.log("Failed to load trips:", error);
+        supabase
+          .from("users")
+          .select("plan")
+          .eq("id", user.id)
+          .maybeSingle(),
+      ]);
+
+      if (tripsResult.error) {
+        console.log("Failed to load trips:", tripsResult.error);
         showToast("加载行程失败，请刷新重试");
       }
 
-      setTrips(data || []);
+      if (profileResult.error) {
+        console.log("Failed to load user plan:", profileResult.error);
+      }
+
+      setTrips(tripsResult.data || []);
+      setPlan(profileResult.data?.plan === "pro" ? "pro" : "free");
       setLoading(false);
     };
 
@@ -78,6 +94,21 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutStatus = params.get("checkout");
+
+    if (checkoutStatus === "success") {
+      showToast("🎉 支付成功，正在为你开通 TripMuse Pro");
+      window.history.replaceState({}, "", "/dashboard");
+    }
+
+    if (checkoutStatus === "canceled") {
+      showToast("已取消支付");
+      window.history.replaceState({}, "", "/dashboard");
+    }
+  }, []);
+
   const showToast = (message: string) => {
     setToast(message);
 
@@ -88,6 +119,55 @@ export default function DashboardPage() {
     toastTimer.current = setTimeout(() => {
       setToast("");
     }, 1800);
+  };
+
+  const handleUpgrade = async () => {
+    if (plan === "pro") {
+      showToast("你已经是 TripMuse Pro 用户 ✨");
+      return;
+    }
+
+    setCheckoutLoading(true);
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        showToast("请先登录后再升级 Pro");
+        return;
+      }
+
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "无法创建支付页面");
+      }
+
+      if (!data.url) {
+        throw new Error("Stripe 没有返回支付页面地址");
+      }
+
+      window.location.assign(data.url);
+    } catch (error) {
+      console.log("Checkout failed:", error);
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "打开支付页面失败，请稍后重试"
+      );
+    } finally {
+      setCheckoutLoading(false);
+    }
   };
 
   const toggleFavorite = async (trip: Trip) => {
@@ -586,7 +666,7 @@ export default function DashboardPage() {
             <div className="relative flex flex-col gap-7 md:flex-row md:items-center md:justify-between">
               <div className="max-w-2xl">
                 <span className="inline-flex rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white/80">
-                  TripMuse Pro
+                  {plan === "pro" ? "✓ TripMuse Pro active" : "TripMuse Pro"}
                 </span>
 
                 <h2 className="mt-4 text-2xl font-bold tracking-tight md:text-3xl">
@@ -601,10 +681,15 @@ export default function DashboardPage() {
 
               <button
                 type="button"
-                onClick={() => showToast("Pro 功能正在准备中 ✨")}
-                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-white px-6 py-3.5 text-sm font-semibold text-gray-950 transition hover:-translate-y-0.5 hover:bg-gray-100"
+                onClick={handleUpgrade}
+                disabled={checkoutLoading || plan === "pro"}
+                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-white px-6 py-3.5 text-sm font-semibold text-gray-950 transition hover:-translate-y-0.5 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
               >
-                Explore Pro
+                {plan === "pro"
+                  ? "✓ Pro active"
+                  : checkoutLoading
+                    ? "Opening checkout..."
+                    : "Upgrade to Pro · $9.99/month"}
               </button>
             </div>
           </section>
