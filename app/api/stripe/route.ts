@@ -6,17 +6,14 @@ export async function POST(request: Request) {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
+    // ❗ 防止 Vercel build 直接崩
     if (!secretKey) {
-      console.error("Missing STRIPE_SECRET_KEY");
-
       return Response.json(
         {
           url: null,
-          error: "服务器尚未配置 Stripe 密钥",
+          error: "Stripe 未配置（V3 MVP 模式已禁用支付）",
         },
-        {
-          status: 500,
-        }
+        { status: 200 }
       );
     }
 
@@ -35,55 +32,37 @@ export async function POST(request: Request) {
         {
           price_data: {
             currency: "usd",
-
             product_data: {
               name: "TripMuse Pro",
               description:
-                "Unlimited AI travel planning and premium TripMuse features.",
+                "Unlimited AI travel planning and premium features.",
             },
-
             unit_amount: 999,
-
             recurring: {
               interval: "month",
             },
           },
-
           quantity: 1,
         },
       ],
 
-      success_url: `${siteUrl}/?success=1&session_id={CHECKOUT_SESSION_ID}`,
-
+      success_url: `${siteUrl}/?success=1`,
       cancel_url: `${siteUrl}/?canceled=1`,
-
-      metadata: {
-        product: "tripmuse_pro",
-        plan: "monthly",
-      },
     });
-
-    if (!session.url) {
-      throw new Error("Stripe 没有返回支付页面地址");
-    }
 
     return Response.json({
       url: session.url,
     });
   } catch (error) {
-    console.error("Stripe Checkout error:", error);
-
     return Response.json(
       {
         url: null,
         error:
           error instanceof Error
             ? error.message
-            : "创建 Stripe 支付页面失败",
+            : "Stripe checkout failed",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
