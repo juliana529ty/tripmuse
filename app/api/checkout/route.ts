@@ -6,14 +6,10 @@ export async function POST(request: Request) {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
-    // ✅ MVP 安全兜底：没有 Stripe key 也不会炸
     if (!secretKey) {
       return Response.json(
-        {
-          url: null,
-          error: "Stripe 未启用（V3 MVP 模式）",
-        },
-        { status: 200 }
+        { error: "Missing STRIPE_SECRET_KEY" },
+        { status: 500 }
       );
     }
 
@@ -34,8 +30,7 @@ export async function POST(request: Request) {
             currency: "usd",
             product_data: {
               name: "TripMuse Pro",
-              description:
-                "Unlimited AI travel planning and premium features.",
+              description: "Unlimited AI travel planning",
             },
             unit_amount: 999,
             recurring: {
@@ -50,19 +45,14 @@ export async function POST(request: Request) {
       cancel_url: `${siteUrl}/?canceled=1`,
     });
 
-    return Response.json({
-      url: session.url,
-    });
+    return Response.json({ url: session.url });
   } catch (error) {
-    console.error("Stripe error:", error);
-
     return Response.json(
       {
-        url: null,
         error:
           error instanceof Error
             ? error.message
-            : "Stripe checkout failed",
+            : "Checkout creation failed",
       },
       { status: 500 }
     );
