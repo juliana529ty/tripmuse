@@ -3,9 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-export async function POST(request: Request) {
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
+export async function POST(request: Request) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -28,15 +30,19 @@ export async function POST(request: Request) {
   }
 
   const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
+    mode: "subscription", // 💥 关键：订阅模式
+
     payment_method_types: ["card"],
+
+    customer_email: user.email || undefined,
 
     line_items: [
       {
         price_data: {
           currency: "usd",
           product_data: {
-            name: "Pro Plan",
+            name: "TripMuse Pro",
+            description: "Unlimited AI travel planning",
           },
           unit_amount: 999,
           recurring: {
@@ -47,8 +53,8 @@ export async function POST(request: Request) {
       },
     ],
 
-    success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard`,
-    cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/pricing`,
+    success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?success=1`,
+    cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?cancel=1`,
 
     metadata: {
       user_id: user.id,

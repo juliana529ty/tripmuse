@@ -10,30 +10,33 @@ import ResultCard from "@/components/ResultCard";
 import SkeletonCard from "@/components/SkeletonCard";
 import { supabase } from "@/lib/supabase";
 
-type RecentTrip = {
-  destination: string;
-  days: string | number;
-  budget: string | number;
-};
-
 export default function Home() {
   const [user, setUser] = useState<any>(null);
 
-  const [count, setCount] = useState(0);
   const MAX_FREE = 3;
+
+  const [plan, setPlan] = useState<"free" | "pro">("free");
+  const [credits, setCredits] = useState(MAX_FREE);
 
   const [destination, setDestination] = useState("");
   const [days, setDays] = useState("");
   const [budget, setBudget] = useState("");
+
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [recentTrips, setRecentTrips] = useState<RecentTrip[]>([]);
+  const [recentTrips, setRecentTrips] = useState<any[]>([]);
   const [loadingText, setLoadingText] = useState("");
 
+  // -------------------------
+  // AUTH
+  // -------------------------
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser();
       setUser(data.user);
-    });
+    };
+
+    loadUser();
 
     const {
       data: { subscription },
@@ -44,113 +47,131 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // -------------------------
+  // LOAD PLAN
+  // -------------------------
   useEffect(() => {
-    const loadTrips = async () => {
+    const loadPlan = async () => {
       if (!user?.id) {
-        setRecentTrips([]);
+        setPlan("free");
+        setCredits(MAX_FREE);
         return;
       }
 
-      const { data, error } = await supabase
-        .from("trip_records")
-        .select("destination, days, budget")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(5);
+      const { data } = await supabase
+        .from("users")
+        .select("plan, credits")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      if (error) {
-        console.log("Failed to load recent trips:", error);
-        return;
-      }
+      setPlan(data?.plan === "pro" ? "pro" : "free");
 
-      const formattedTrips: RecentTrip[] = (data || []).map((trip) => ({
-        destination: String(trip.destination || ""),
-        days: trip.days ?? "",
-        budget: trip.budget ?? "",
-      }));
-
-      setRecentTrips(formattedTrips);
+      setCredits(
+        data?.plan === "pro"
+          ? -1
+          : data?.credits ?? MAX_FREE
+      );
     };
 
-    loadTrips();
+    loadPlan();
   }, [user?.id]);
 
+  // -------------------------
+  // GENERATE (GROWTH VERSION)
+  // -------------------------
   const generatePlan = async () => {
     if (!user) {
-      alert("请先登录后再生成旅行计划");
+      alert("请先登录");
       return;
     }
 
-    if (!destination.trim() || !days.trim() || !budget.trim()) {
-      alert("请填写目的地、天数和预算");
-      return;
-    }
-
-    if (count >= MAX_FREE) {
-      alert("免费次数已用完");
+    if (plan !== "pro" && credits <= 0) {
+      alert("免费次数已用完，请升级 Pro");
       return;
     }
 
     setLoading(true);
     setResult(null);
-    setLoadingText("正在为你设计旅行路线...");
-
-    const prompt = `
-城市：${destination}
-天数：${days}
-预算：${budget}
-`;
+    setLoadingText("正在生成你的旅行计划...");
 
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({
+          destination,
+          days,
+          budget,
+        }),
       });
 
       const data = await res.json();
 
-      if (!res.ok || !data.result) {
-        throw new Error(data.error || "生成失败");
+      if (!res.ok) {
+        if (data.upgrade) {
+          alert("升级 Pro 解锁无限生成");
+        }
+        throw new Error(data.error);
       }
 
       setResult(data.result);
 
-      const { error } = await supabase.from("trip_records").insert({
+      // 💰 Growth核心：更新状态
+      setPlan(data.plan ?? "free");
+      setCredits(
+        data.plan === "pro"
+          ? -1
+          : data.creditsRemaining ?? credits
+      );
+
+      // ⚡ Growth hint（核心）
+      if (data.upgradeHint) {
+        setLoadingText("⚡ 你快用完免费额度了，升级 Pro 解锁无限生成");
+      }
+
+      // save trip
+      await supabase.from("trip_records").insert({
         user_id: user.id,
         destination,
         days,
         budget,
         result: data.result,
       });
-
-      if (error) {
-        console.log("Failed to save trip:", error);
-      } else {
-        const newTrip: RecentTrip = {
-          destination,
-          days,
-          budget,
-        };
-
-        setRecentTrips((previousTrips) =>
-          [newTrip, ...previousTrips].slice(0, 5)
-        );
-      }
-
-      setCount((currentCount) => currentCount + 1);
     } catch (error) {
-      console.log("Generate plan error:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "生成旅行计划失败，请稍后再试"
-      );
+      console.log(error);
+      alert("生成失败，请稍后再试");
     } finally {
       setLoading(false);
       setLoadingText("");
+    }
+  };
+
+  // -------------------------
+  // STRIPE UPGRADE
+  // -------------------------
+  const upgradeToPro = async () => {
+    const { data } = await supabase.auth.getSession();
+
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${data.session?.access_token}`,
+      },
+    });
+
+    const json = await res.json();
+
+    if (json.url) {
+      window.location.href = json.url;
+    } else {
+      alert("创建支付失败");
     }
   };
 
@@ -158,167 +179,63 @@ export default function Home() {
     <div className="min-h-screen bg-[#fafafa] text-gray-950">
       <Navbar />
 
+      {/* 🔥 Growth Banner */}
+      {plan !== "pro" && (
+        <div className="bg-yellow-100 text-yellow-800 text-center py-2 text-sm">
+          {credits > 0
+            ? `⚡ You have ${credits} free trips left`
+            : "🚀 Upgrade to Pro for unlimited trips"}
+        </div>
+      )}
+
+      {/* Upgrade Button */}
+      <div className="flex justify-center p-4">
+        {plan !== "pro" && (
+          <button
+            onClick={upgradeToPro}
+            className="px-5 py-2 bg-black text-white rounded-xl"
+          >
+            Upgrade to Pro
+          </button>
+        )}
+      </div>
+
       <main>
         <Hero />
 
-        <section
-          id="planner"
-          className="scroll-mt-24 border-y border-gray-200 bg-white px-5 py-16 md:px-8 md:py-20"
-        >
+        <section id="planner" className="bg-white py-16">
           <div className="mx-auto max-w-5xl">
-            <div className="mb-10 text-center">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-purple-500">
-                Your next journey
-              </p>
-
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 md:text-4xl">
-                Where do you want to go?
-              </h2>
-
-              <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-gray-500 md:text-base">
-                Tell TripMuse the basics. Your AI travel companion will turn
-                them into a personalized itinerary.
-              </p>
-            </div>
-
-            <div className="rounded-[2rem] border border-gray-200 bg-[#fafafa] p-3 shadow-xl shadow-gray-200/50 sm:p-6 md:p-8">
-              <PlannerForm
-                destination={destination}
-                days={days}
-                budget={budget}
-                loading={loading}
-                loadingText={loadingText}
-                onDestinationChange={setDestination}
-                onDaysChange={setDays}
-                onBudgetChange={setBudget}
-                onGenerate={generatePlan}
-              />
-            </div>
+            <PlannerForm
+              destination={destination}
+              days={days}
+              budget={budget}
+              loading={loading}
+              loadingText={loadingText}
+              onDestinationChange={setDestination}
+              onDaysChange={setDays}
+              onBudgetChange={setBudget}
+              onGenerate={generatePlan}
+            />
           </div>
         </section>
 
-        <section className="px-5 py-14 md:px-8 md:py-20">
+        <section className="py-10">
           <div className="mx-auto max-w-5xl">
-            {loading && <SkeletonCard />}
-
-            {!loading && (
+            {loading ? (
+              <SkeletonCard />
+            ) : (
               <ResultCard
                 result={result}
-                count={count}
-                maxFree={MAX_FREE}
+                count={plan === "pro" ? 0 : MAX_FREE - credits}
+                maxFree={plan === "pro" ? -1 : MAX_FREE}
               />
             )}
           </div>
         </section>
 
-        <section
-          id="features"
-          className="border-y border-gray-200 bg-white px-5 py-16 md:px-8 md:py-20"
-        >
-          <div className="mx-auto max-w-6xl">
-            <div className="max-w-2xl">
-              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-pink-500">
-                Built for curious travelers
-              </p>
-
-              <h2 className="mt-3 text-3xl font-bold tracking-tight text-gray-950 md:text-4xl">
-                More than another booking website.
-              </h2>
-
-              <p className="mt-4 leading-7 text-gray-500">
-                TripMuse focuses on inspiration, planning, collecting and
-                sharing — helping every journey feel personal before it even
-                begins.
-              </p>
-            </div>
-
-            <div className="mt-10 grid gap-5 md:grid-cols-3">
-              <article className="rounded-3xl border border-gray-200 bg-[#fafafa] p-7 transition hover:-translate-y-1 hover:shadow-lg">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pink-100 text-2xl">
-                  ✨
-                </div>
-
-                <h3 className="mt-6 text-lg font-bold text-gray-950">
-                  Personal AI planning
-                </h3>
-
-                <p className="mt-3 text-sm leading-7 text-gray-500">
-                  Generate a route based on your destination, schedule and
-                  budget instead of reading dozens of generic guides.
-                </p>
-              </article>
-
-              <article className="rounded-3xl border border-gray-200 bg-[#fafafa] p-7 transition hover:-translate-y-1 hover:shadow-lg">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-100 text-2xl">
-                  📚
-                </div>
-
-                <h3 className="mt-6 text-lg font-bold text-gray-950">
-                  Your travel collection
-                </h3>
-
-                <p className="mt-3 text-sm leading-7 text-gray-500">
-                  Save ideas, revisit favorite journeys and gradually build a
-                  personal library of places you want to experience.
-                </p>
-              </article>
-
-              <article className="rounded-3xl border border-gray-200 bg-[#fafafa] p-7 transition hover:-translate-y-1 hover:shadow-lg">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-2xl">
-                  🎟️
-                </div>
-
-                <h3 className="mt-6 text-lg font-bold text-gray-950">
-                  Made to save and share
-                </h3>
-
-                <p className="mt-3 text-sm leading-7 text-gray-500">
-                  Turn an itinerary into a beautiful share page — with
-                  printable ticket-journal designs planned for a future
-                  release.
-                </p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section className="px-5 py-16 md:px-8 md:py-20">
+        <section className="py-10">
           <div className="mx-auto max-w-5xl">
-            <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-500">
-                  Continue exploring
-                </p>
-
-                <h2 className="mt-3 text-3xl font-bold tracking-tight text-gray-950">
-                  Recent trips
-                </h2>
-              </div>
-
-              {user && (
-                <a
-                  href="/dashboard"
-                  className="text-sm font-semibold text-gray-600 transition hover:text-gray-950"
-                >
-                  View all trips →
-                </a>
-              )}
-            </div>
-
-            <RecentTrips
-              trips={recentTrips}
-              onSelect={(trip: RecentTrip) => {
-                setDestination(String(trip.destination));
-                setDays(String(trip.days));
-                setBudget(String(trip.budget));
-
-                document
-                  .getElementById("planner")
-                  ?.scrollIntoView({
-                    behavior: "smooth",
-                  });
-              }}
-            />
+            <RecentTrips trips={recentTrips} />
           </div>
         </section>
       </main>
