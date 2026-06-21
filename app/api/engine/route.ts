@@ -1,42 +1,112 @@
+
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return Response.json(
+      {
+        error: "Missing Supabase environment variables",
+      },
+      { status: 500 }
+    );
+  }
+
   const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
   );
 
-  const { data: events } = await supabase
-    .from("analytics_events")
-    .select("*");
+  const { data: events, error: eventsError } =
+    await supabase
+      .from("analytics_events")
+      .select("*");
 
-  const users =
-    new Set(events?.map((e) => e.user_id)).size;
+  if (eventsError) {
+    console.error(
+      "Failed to load analytics events:",
+      eventsError
+    );
 
-  const revenue =
-    events?.filter((e) => e.event === "payment_success").length *
-    9.9;
+    return Response.json(
+      {
+        error: "Failed to load analytics events",
+      },
+      { status: 500 }
+    );
+  }
 
-  const cost =
-    events?.filter((e) => e.event === "generate").length * 2;
+  const safeEvents = events ?? [];
 
-  const profit = revenue - cost;
+  const validUserIds = safeEvents
+    .map((event) => event.user_id)
+    .filter(
+      (
+        userId
+      ): userId is string =>
+        typeof userId === "string" &&
+        userId.trim().length > 0
+    );
+
+  const users = new Set(validUserIds).size;
+
+  const successfulPayments =
+    safeEvents.filter(
+      (event) =>
+        event.event === "payment_success"
+    ).length;
+
+  const generations =
+    safeEvents.filter(
+      (event) => event.event === "generate"
+    ).length;
 
   const referrals =
-    events?.filter((e) => e.event === "referral_success").length;
+    safeEvents.filter(
+      (event) =>
+        event.event === "referral_success"
+    ).length;
 
-  const conversion = users ? revenue / users : 0;
+  const revenue =
+    successfulPayments * 9.9;
+
+  const cost =
+    generations * 2;
+
+  const profit =
+    revenue - cost;
+
+  const conversion =
+    users > 0
+      ? successfulPayments / users
+      : 0;
 
   return Response.json({
     users,
+    successfulPayments,
+    generations,
     revenue,
     cost,
     profit,
     referrals,
     conversion,
     health:
-      profit > 0 && conversion > 0.03 ? "scaling" : "needs_work",
+      profit > 0 && conversion > 0.03
+        ? "scaling"
+        : "needs_work",
   });
 }
+
