@@ -140,7 +140,7 @@ export default function DashboardPage() {
         return;
       }
 
-      const response = await fetch("/api/checkout", {
+      const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.access_token}`,

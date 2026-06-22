@@ -1,63 +1,91 @@
-import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 
 export const runtime = "nodejs";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+// Stripe init
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-06-20",
+});
 
 export async function POST(request: Request) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  try {
+    // -------------------------
+    // 1. AUTH
+    // -------------------------
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  const token = request.headers
-    .get("authorization")
-    ?.replace("Bearer ", "");
+    const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-  if (!token) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const token = request.headers
+      .get("authorization")
+      ?.replace("Bearer ", "");
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser(token);
+    if (!token) {
+      return Response.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-  if (!user) {
-    return Response.json({ error: "Invalid user" }, { status: 401 });
-  }
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription", // 💥 关键：订阅模式
+    if (error || !user) {
+      return Response.json(
+        { error: "Invalid user" },
+        { status: 401 }
+      );
+    }
 
-    payment_method_types: ["card"],
+    // -------------------------
+    // 2. CREATE STRIPE SESSION
+    // -------------------------
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
 
-    customer_email: user.email || undefined,
-
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "TripMuse Pro",
-            description: "Unlimited AI travel planning",
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "TripMuse Pro",
+            },
+            unit_amount: 999,
+            recurring: {
+              interval: "month",
+            },
           },
-          unit_amount: 999,
-          recurring: {
-            interval: "month",
-          },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?checkout=success`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?checkout=canceled`,
+
+      metadata: {
+        user_id: user.id,
       },
-    ],
+    });
 
-    success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?success=1`,
-    cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?cancel=1`,
+    // -------------------------
+    // 3. RETURN URL
+    // -------------------------
+    return Response.json({
+      url: session.url,
+    });
+  } catch (error: any) {
+    console.error("Stripe checkout error:", error);
 
-    metadata: {
-      user_id: user.id,
-    },
-  });
-
-  return Response.json({ url: session.url });
+    return Response.json(
+      {
+        error: "Checkout failed",
+      },
+      { status: 500 }
+    );
+  }
 }
