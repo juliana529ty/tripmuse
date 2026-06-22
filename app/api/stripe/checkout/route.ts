@@ -1,49 +1,34 @@
-import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-// Stripe init
+// ✅ 正确 Stripe init（必须这样）
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
+  
 });
 
 export async function POST(request: Request) {
   try {
-    // -------------------------
-    // 1. AUTH
-    // -------------------------
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_ANON_KEY!
+    );
 
     const token = request.headers
       .get("authorization")
       ?.replace("Bearer ", "");
 
     if (!token) {
-      return Response.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser(token);
+    const { data: { user } } = await supabase.auth.getUser(token);
 
-    if (error || !user) {
-      return Response.json(
-        { error: "Invalid user" },
-        { status: 401 }
-      );
+    if (!user) {
+      return Response.json({ error: "Invalid user" }, { status: 401 });
     }
 
-    // -------------------------
-    // 2. CREATE STRIPE SESSION
-    // -------------------------
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "subscription",
@@ -72,19 +57,23 @@ export async function POST(request: Request) {
       },
     });
 
-    // -------------------------
-    // 3. RETURN URL
-    // -------------------------
+    // ⚠️ 必须保证 session.url 存在
+    if (!session.url) {
+      return Response.json(
+        { error: "No checkout URL generated" },
+        { status: 500 }
+      );
+    }
+
     return Response.json({
       url: session.url,
     });
+
   } catch (error: any) {
     console.error("Stripe checkout error:", error);
 
     return Response.json(
-      {
-        error: "Checkout failed",
-      },
+      { error: error.message || "Checkout failed" },
       { status: 500 }
     );
   }
