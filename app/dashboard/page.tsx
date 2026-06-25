@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase";
@@ -14,6 +15,8 @@ type Trip = {
 };
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   const [user, setUser] = useState<any>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +28,9 @@ export default function DashboardPage() {
     const load = async () => {
       setLoading(true);
 
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
       if (!user) {
         setLoading(false);
@@ -144,7 +149,8 @@ export default function DashboardPage() {
           {trips.map((trip) => (
             <div
               key={trip.id}
-              className="border rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition"
+              onClick={() => router.push(`/trip/${trip.id}`)}
+              className="border rounded-2xl p-5 bg-white shadow-sm hover:shadow-md transition cursor-pointer"
             >
               <h2 className="font-bold text-lg">
                 📍 {trip.destination}
@@ -155,15 +161,30 @@ export default function DashboardPage() {
               </p>
 
               <div className="flex gap-3 mt-4 text-sm">
-                <button onClick={() => shareTrip(trip)}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    shareTrip(trip);
+                  }}
+                >
                   📎 Share
                 </button>
 
-                <button onClick={() => toggleFavorite(trip)}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavorite(trip);
+                  }}
+                >
                   {trip.favorite ? "❤️ Unfavorite" : "🤍 Favorite"}
                 </button>
 
-                <button onClick={() => deleteTrip(trip)}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteTrip(trip);
+                  }}
+                >
                   🗑 Delete
                 </button>
               </div>

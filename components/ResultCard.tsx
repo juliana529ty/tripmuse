@@ -1,14 +1,14 @@
 "use client";
 
 type DayItem = {
-  day: string | number;
+  day?: string | number;
   morning?: string;
   afternoon?: string;
   evening?: string;
   tip?: string;
 };
 
-type BudgetInfo = {
+type Budget = {
   hotel?: string;
   food?: string;
   transport?: string;
@@ -23,238 +23,157 @@ type ParsedResult = {
   food: string[];
   spots: string[];
   tips: string[];
-  generalTips?: string[];
-  budget: BudgetInfo;
+  budget: Budget;
   rawText: string;
 };
 
-type ResultCardProps = {
-  result: unknown;
-  onCopy?: () => void;
-  count?: number;
-  maxFree?: number;
-};
+/* ---------------- utils ---------------- */
 
-/* ---------------- helpers ---------------- */
-
-function cleanLine(line: string) {
-  return line
-    .replace(/^[-•]\s*/, "")
-    .replace(/^[🌅🌞🌙💡🏨🍜🚗🎫🧾📍📸⚠️💰🗓️]+\s*/, "")
-    .trim();
+function safeArray(arr: any): string[] {
+  return Array.isArray(arr) ? arr.filter(Boolean) : [];
 }
 
-function getSection(text: string, startPatterns: RegExp[], endPatterns: RegExp[]) {
-  const lines = text.split("\n");
-
-  let startIndex = -1;
-  let endIndex = lines.length;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-
-    if (startIndex === -1 && startPatterns.some(p => p.test(line))) {
-      startIndex = i + 1;
-      continue;
-    }
-
-    if (startIndex !== -1 && endPatterns.some(p => p.test(line))) {
-      endIndex = i;
-      break;
-    }
+function normalize(obj: any): ParsedResult {
+  if (!obj) {
+    return {
+      title: "Your Trip",
+      overview: "",
+      days: [],
+      food: [],
+      spots: [],
+      tips: [],
+      budget: {},
+      rawText: "",
+    };
   }
 
-  if (startIndex === -1) return [];
-
-  return lines.slice(startIndex, endIndex).map(cleanLine).filter(Boolean);
-}
-
-/* ---------------- unified tips extractor ---------------- */
-
-function extractTips(obj: any, text: string): string[] {
-  const all: string[] = [];
-
-  if (Array.isArray(obj?.tips)) all.push(...obj.tips);
-  if (Array.isArray(obj?.generalTips)) all.push(...obj.generalTips);
-  if (Array.isArray(obj?.travelTips)) all.push(...obj.travelTips);
-
-  // fallback parse text
-  const textTips = getSection(
-    text,
-    [/^💡|Tips|Travel Tips/i],
-    [/^💰|Budget/i]
-  );
-
-  all.push(...textTips);
-
-  return Array.from(new Set(all)).filter(Boolean);
-}
-
-/* ---------------- days parser ---------------- */
-
-function parseDays(text: string): DayItem[] {
-  const dayRegex =
-    /(?:📅\s*)?Day\s*(\d+)([\s\S]*?)(?=(?:📅\s*)?Day\s*\d+|💰|💡|$)/gi;
-
-  const days: DayItem[] = [];
-  let match;
-
-  while ((match = dayRegex.exec(text)) !== null) {
-    const block = match[2];
-
-    days.push({
-      day: match[1],
-      morning:
-        block.match(/Morning[：:\s]*(.+)/i)?.[1]?.trim() ?? "",
-      afternoon:
-        block.match(/Afternoon[：:\s]*(.+)/i)?.[1]?.trim() ?? "",
-      evening:
-        block.match(/Evening[：:\s]*(.+)/i)?.[1]?.trim() ?? "",
-      tip:
-        block.match(/💡[：:\s]*(.+)/i)?.[1]?.trim() ?? "",
-    });
-  }
-
-  return days;
-}
-
-/* ---------------- main parser ---------------- */
-
-function parseTextResult(text: string): ParsedResult {
-  const rawText = text.replace(/```/g, "").trim();
-
-  const lines = rawText.split("\n").filter(Boolean);
+  const rawText = obj.rawText || JSON.stringify(obj);
 
   return {
-    title: lines[0] ?? "Your Trip Plan",
-    overview: "",
-    days: parseDays(rawText),
+    title: obj.title || "Your Trip",
+    overview: obj.overview || "",
+    days: obj.days || obj.itinerary || [],
 
-    food: getSection(rawText, [/🍜|Food/i], [/📸|💰|💡/i]),
-    spots: getSection(rawText, [/📸|Highlights/i], [/🍜|💰|💡/i]),
+    food: safeArray(obj.food),
+    spots: safeArray(obj.spots || obj.highlights),
 
-    tips: extractTips({}, rawText),
-    generalTips: [],
+    tips: safeArray(
+      obj.tips || obj.generalTips || obj.travelTips
+    ),
 
-    budget: {
-      hotel: "",
-      food: "",
-      transport: "",
-      ticket: "",
-      extra: "",
-    },
+    budget: obj.budget || {},
 
     rawText,
   };
 }
 
-/* ---------------- normalize ---------------- */
-
-function normalizeResult(result: unknown): ParsedResult {
-  if (typeof result === "string") return parseTextResult(result);
-
-  if (result && typeof result === "object") {
-    const obj = result as any;
-
-    const rawText = obj.rawText ?? JSON.stringify(obj, null, 2);
-
-    return {
-      title: obj.title ?? "Your Trip",
-      overview: obj.overview ?? "",
-      days: obj.days ?? obj.itinerary ?? [],
-
-      food: obj.food ?? [],
-      spots: obj.spots ?? [],
-
-      tips: extractTips(obj, rawText),
-      generalTips: obj.generalTips ?? [],
-
-      budget: obj.budget ?? {},
-      rawText,
-    };
-  }
-
-  return {
-    title: "Your Trip Plan",
-    overview: "",
-    days: [],
-    food: [],
-    spots: [],
-    tips: [],
-    generalTips: [],
-    budget: {},
-    rawText: "",
-  };
-}
-
 /* ---------------- component ---------------- */
 
-export default function ResultCard({
-  result,
-  onCopy,
-}: ResultCardProps) {
-  if (!result) {
-    return (
-      <div className="text-center text-gray-400 mt-10">
-        ✈️ Enter destination to start
-      </div>
-    );
-  }
+export default function ResultCard({ result }: any) {
+  const parsed = normalize(result);
 
-  const parsed = normalizeResult(result);
+  if (!parsed) return null;
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto mt-6">
 
-      {/* Header */}
-      <div className="border rounded-2xl p-5 text-center bg-white">
-        🌍 TripMuse
+      {/* HEADER */}
+      <div className="border rounded-2xl p-5 bg-white text-center font-bold">
+        🌍 TripMuse Itinerary
       </div>
 
-      {/* Title */}
+      {/* TITLE */}
       <div className="border rounded-2xl p-5 bg-white">
         <h2 className="text-xl font-bold">📍 {parsed.title}</h2>
+        {parsed.overview && (
+          <p className="text-gray-500 mt-2">{parsed.overview}</p>
+        )}
       </div>
 
-      {/* Days */}
-      <div className="border rounded-2xl p-5 bg-white">
-        {parsed.days.map((d, i) => (
-          <div key={i} className="mb-5">
-            <div className="font-bold">Day {d.day}</div>
-
-            {d.morning && <div>🌅 {d.morning}</div>}
-            {d.afternoon && <div>🌞 {d.afternoon}</div>}
-            {d.evening && <div>🌙 {d.evening}</div>}
-
-            {d.tip && (
-              <div className="text-amber-600 mt-2">
-                💡 {d.tip}
+      {/* DAYS */}
+      {parsed.days.length > 0 && (
+        <div className="border rounded-2xl p-5 bg-white space-y-4">
+          {parsed.days.map((d: any, i: number) => (
+            <div key={i} className="border-b pb-3 last:border-none">
+              <div className="font-bold mb-2">
+                Day {d.day || i + 1}
               </div>
-            )}
-          </div>
-        ))}
-      </div>
 
-      {/* Tips (🔥 FIXED CORE) */}
+              {d.morning && <div>🌅 Morning: {d.morning}</div>}
+              {d.afternoon && <div>🌞 Afternoon: {d.afternoon}</div>}
+              {d.evening && <div>🌙 Evening: {d.evening}</div>}
+
+              {d.tip && (
+                <div className="text-amber-600 mt-1">
+                  💡 Tip: {d.tip}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* HIGHLIGHTS */}
+      {parsed.spots.length > 0 && (
+        <div className="border rounded-2xl p-5 bg-white">
+          <h3 className="font-bold mb-2">📸 Highlights</h3>
+          {parsed.spots.map((s, i) => (
+            <div key={i}>• {s}</div>
+          ))}
+        </div>
+      )}
+
+      {/* FOOD */}
+      {parsed.food.length > 0 && (
+        <div className="border rounded-2xl p-5 bg-white">
+          <h3 className="font-bold mb-2">🍜 Food</h3>
+          {parsed.food.map((f, i) => (
+            <div key={i}>• {f}</div>
+          ))}
+        </div>
+      )}
+
+      {/* TIPS */}
       {parsed.tips.length > 0 && (
         <div className="border rounded-2xl p-5 bg-white">
           <h3 className="font-bold mb-2">💡 Travel Tips</h3>
-
           {parsed.tips.map((t, i) => (
             <div key={i}>• {t}</div>
           ))}
         </div>
       )}
 
-      {/* Copy */}
+      {/* BUDGET */}
+      {parsed.budget && Object.keys(parsed.budget).length > 0 && (
+        <div className="border rounded-2xl p-5 bg-white">
+          <h3 className="font-bold mb-2">💰 Budget</h3>
+
+          {parsed.budget.hotel && (
+            <div>🏨 Hotel: {parsed.budget.hotel}</div>
+          )}
+          {parsed.budget.food && (
+            <div>🍜 Food: {parsed.budget.food}</div>
+          )}
+          {parsed.budget.transport && (
+            <div>🚗 Transport: {parsed.budget.transport}</div>
+          )}
+          {parsed.budget.ticket && (
+            <div>🎫 Tickets: {parsed.budget.ticket}</div>
+          )}
+          {parsed.budget.extra && (
+            <div>🧾 Extra: {parsed.budget.extra}</div>
+          )}
+        </div>
+      )}
+
+      {/* COPY RAW */}
       <button
-        onClick={() => {
-          onCopy?.();
-          navigator.clipboard.writeText(parsed.rawText);
-        }}
+        onClick={() =>
+          navigator.clipboard.writeText(parsed.rawText)
+        }
         className="w-full bg-black text-white py-3 rounded-xl"
       >
-        Copy
+        Copy Full Itinerary
       </button>
     </div>
   );

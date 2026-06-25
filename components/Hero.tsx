@@ -28,7 +28,7 @@ export default function Hero() {
         </p>
 
         <p className="mx-auto mt-2 max-w-xl text-sm leading-7 text-gray-400">
-          从旅行灵感到完整行程，只需要几十秒。
+          Turn inspiration into a full travel plan in seconds.
         </p>
 
         <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
