@@ -6,14 +6,14 @@ export const runtime = "nodejs";
    🌍 中文 → 英文映射
 ------------------------------ */
 const EN_MAP = {
-  "重庆": "Chongqing",
-  "长沙": "Changsha",
-  "北京": "Beijing",
-  "上海": "Shanghai",
-  "深圳": "Shenzhen",
-  "成都": "Chengdu",
-  "杭州": "Hangzhou",
-  "广州": "Guangzhou",
+  重庆: "Chongqing",
+  长沙: "Changsha",
+  北京: "Beijing",
+  上海: "Shanghai",
+  深圳: "Shenzhen",
+  成都: "Chengdu",
+  杭州: "Hangzhou",
+  广州: "Guangzhou",
 };
 
 function normalizeDestination(input) {
@@ -43,7 +43,9 @@ export async function POST(request) {
 
   const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
 
-  const { data: { user } } = await supabaseAuth.auth.getUser(token);
+  const {
+    data: { user },
+  } = await supabaseAuth.auth.getUser(token);
 
   if (!user) {
     return Response.json({ error: "Invalid user" }, { status: 401 });
@@ -52,7 +54,7 @@ export async function POST(request) {
   const body = await request.json();
 
   const destinationRaw = String(body?.destination || "").trim();
-  const days = String(body?.days || "").trim();
+  const days = Number(body?.days || 3);
   const budget = String(body?.budget || "").trim();
   const preferences = String(body?.preferences || "").trim();
 
@@ -78,60 +80,38 @@ export async function POST(request) {
   }
 
   /* -----------------------------
-     🤖 AI (STRONGLY STRUCTURED OUTPUT)
+     🤖 AI PROMPT (FIXED → JSON ONLY)
   ------------------------------ */
   const prompt = `
-You are TripMuse, a professional travel planner.
+You are TripMuse AI.
 
-CRITICAL RULES:
-- Output ONLY English
-- NEVER output Chinese
-- STRICT FORMAT BELOW (must follow exactly)
-- Every section must exist (do not skip)
+CRITICAL RULE:
+Return ONLY valid JSON. No markdown. No explanation.
 
-FORMAT:
-
-Title: <Trip Title>
-
-Overview:
-<short overview>
-
-Day 1:
-Morning: ...
-Afternoon: ...
-Evening: ...
-Tip: ...
-
-Day 2:
-Morning: ...
-Afternoon: ...
-Evening: ...
-Tip: ...
-
-(Repeat for all days)
-
-🍜 Food:
-- ...
-- ...
-
-📸 Highlights:
-- ...
-- ...
-
-💡 Travel Tips:
-- MUST include at least 5 tips
-- ...
-- ...
-- ...
-- ...
-- ...
-
-💰 Budget:
-Hotel: ...
-Food: ...
-Transport: ...
-Tickets: ...
-Extra: ...
+JSON FORMAT:
+{
+  "title": "string",
+  "overview": "string",
+  "days": [
+    {
+      "day": 1,
+      "morning": "string",
+      "afternoon": "string",
+      "evening": "string",
+      "tip": "string"
+    }
+  ],
+  "food": ["string"],
+  "spots": ["string"],
+  "tips": ["string"],
+  "budget": {
+    "hotel": "string",
+    "food": "string",
+    "transport": "string",
+    "ticket": "string",
+    "extra": "string"
+  }
+}
 `.trim();
 
   const deepseekResponse = await fetch(
@@ -146,10 +126,7 @@ Extra: ...
         model: "deepseek-chat",
         temperature: 0.7,
         messages: [
-          {
-            role: "system",
-            content: prompt,
-          },
+          { role: "system", content: prompt },
           {
             role: "user",
             content: `
@@ -165,7 +142,20 @@ Preferences: ${preferences}
   );
 
   const data = await deepseekResponse.json();
-  const result = data?.choices?.[0]?.message?.content ?? "";
+
+  const raw = data?.choices?.[0]?.message?.content;
+
+  let result;
+
+  try {
+    result = JSON.parse(raw);
+  } catch (e) {
+    console.error("AI JSON parse failed:", raw);
+    return Response.json(
+      { error: "Invalid AI response format" },
+      { status: 500 }
+    );
+  }
 
   /* -----------------------------
      💳 credits

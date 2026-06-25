@@ -81,18 +81,18 @@ export default function Home() {
   // -------------------------
   const generatePlan = async () => {
     if (!user) {
-      alert("请先登录");
+      alert("Please log in first.");
       return;
     }
 
     if (plan !== "pro" && credits <= 0) {
-      alert("免费次数已用完，请升级 Pro");
+      alert("You're out of free tries. Upgrade to Pro to keep going!");
       return;
     }
 
     setLoading(true);
     setResult(null);
-    setLoadingText("正在生成你的旅行计划...");
+    setLoadingText("Generating your travel plan...");
 
     try {
       const {
@@ -116,7 +116,7 @@ export default function Home() {
 
       if (!res.ok) {
         if (data.upgrade) {
-          alert("升级 Pro 解锁无限生成");
+          alert("Upgrade to Pro to unlock unlimited generation.");
         }
         throw new Error(data.error);
       }
@@ -133,7 +133,7 @@ export default function Home() {
 
       // ⚡ Growth hint（核心）
       if (data.upgradeHint) {
-        setLoadingText("⚡ 你快用完免费额度了，升级 Pro 解锁无限生成");
+        setLoadingText("⚡ You're running out of free credits. Upgrade to Pro to unlock unlimited generation.");
       }
 
       // save trip
@@ -146,7 +146,7 @@ export default function Home() {
       });
     } catch (error) {
       console.log(error);
-      alert("生成失败，请稍后再试");
+      alert("Failed to generate. Please try again later.");
     } finally {
       setLoading(false);
       setLoadingText("");
@@ -171,7 +171,7 @@ export default function Home() {
     if (json.url) {
       window.location.href = json.url;
     } else {
-      alert("创建支付失败");
+      alert("Payment creation failed");
     }
   };
 
