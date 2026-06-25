@@ -24,27 +24,31 @@ export default function PlannerForm({
   return (
     <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl p-6 space-y-4">
 
+      {/* Destination */}
       <input
         className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400"
-        placeholder="📍 目的地"
+        placeholder="📍 Destination (e.g. Tokyo, Paris, Bali)"
         value={destination}
         onChange={(e) => onDestinationChange(e.target.value)}
       />
 
+      {/* Days */}
       <input
         className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400"
-        placeholder="📅 天数"
+        placeholder="📅 Number of days (e.g. 3, 5, 7)"
         value={days}
         onChange={(e) => onDaysChange(e.target.value)}
       />
 
+      {/* Budget */}
       <input
         className="w-full p-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400"
-        placeholder="💰 预算"
+        placeholder="💰 Budget (e.g. $1000 USD)"
         value={budget}
         onChange={(e) => onBudgetChange(e.target.value)}
       />
 
+      {/* Generate Button */}
       <button
         onClick={onGenerate}
         disabled={loading}
@@ -58,9 +62,8 @@ export default function PlannerForm({
                 "shadow-lg"
               ].join(" ")
         }`}
-      
       >
-        {loading ? loadingText : "✨ 生成旅行攻略"}
+        {loading ? loadingText : "✨ Generate Travel Plan"}
       </button>
 
     </div>

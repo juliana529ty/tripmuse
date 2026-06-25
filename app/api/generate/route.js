@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 
 /* -----------------------------
-   🌍 统一英文映射层（解决中文污染）
+   🌍 中文 → 英文映射
 ------------------------------ */
 const EN_MAP = {
   "重庆": "Chongqing",
@@ -22,7 +22,7 @@ function normalizeDestination(input) {
 }
 
 /* -----------------------------
-   🚀 API ROUTE
+   🚀 MAIN API
 ------------------------------ */
 export async function POST(request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -31,24 +31,19 @@ export async function POST(request) {
   const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !deepseekApiKey) {
-    return Response.json(
-      { error: "Missing env config" },
-      { status: 500 }
-    );
+    return Response.json({ error: "Missing env config" }, { status: 500 });
   }
 
-  const authorization = request.headers.get("authorization");
-  const accessToken = authorization?.startsWith("Bearer ")
-    ? authorization.slice(7)
-    : null;
+  const auth = request.headers.get("authorization");
+  const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
 
-  if (!accessToken) {
+  if (!token) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
 
-  const { data: { user } } = await supabaseAuth.auth.getUser(accessToken);
+  const { data: { user } } = await supabaseAuth.auth.getUser(token);
 
   if (!user) {
     return Response.json({ error: "Invalid user" }, { status: 401 });
@@ -65,9 +60,6 @@ export async function POST(request) {
     return Response.json({ error: "Missing fields" }, { status: 400 });
   }
 
-  /* -----------------------------
-     🌍 强制英文化输入
-  ------------------------------ */
   const destination = normalizeDestination(destinationRaw);
 
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
@@ -79,19 +71,69 @@ export async function POST(request) {
     .maybeSingle();
 
   const plan = profile?.plan === "pro" ? "pro" : "free";
-
   let credits = plan === "pro" ? -1 : profile?.credits ?? 3;
 
   if (plan !== "pro" && credits <= 0) {
-    return Response.json(
-      { error: "No credits left" },
-      { status: 403 }
-    );
+    return Response.json({ error: "No credits left" }, { status: 403 });
   }
 
   /* -----------------------------
-     🤖 AI CALL（强制英文输出）
+     🤖 AI (STRONGLY STRUCTURED OUTPUT)
   ------------------------------ */
+  const prompt = `
+You are TripMuse, a professional travel planner.
+
+CRITICAL RULES:
+- Output ONLY English
+- NEVER output Chinese
+- STRICT FORMAT BELOW (must follow exactly)
+- Every section must exist (do not skip)
+
+FORMAT:
+
+Title: <Trip Title>
+
+Overview:
+<short overview>
+
+Day 1:
+Morning: ...
+Afternoon: ...
+Evening: ...
+Tip: ...
+
+Day 2:
+Morning: ...
+Afternoon: ...
+Evening: ...
+Tip: ...
+
+(Repeat for all days)
+
+🍜 Food:
+- ...
+- ...
+
+📸 Highlights:
+- ...
+- ...
+
+💡 Travel Tips:
+- MUST include at least 5 tips
+- ...
+- ...
+- ...
+- ...
+- ...
+
+💰 Budget:
+Hotel: ...
+Food: ...
+Transport: ...
+Tickets: ...
+Extra: ...
+`.trim();
+
   const deepseekResponse = await fetch(
     "https://api.deepseek.com/chat/completions",
     {
@@ -106,25 +148,7 @@ export async function POST(request) {
         messages: [
           {
             role: "system",
-            content: `
-You are TripMuse, a professional AI travel planner.
-
-CRITICAL RULES:
-- Output ONLY English
-- NEVER output Chinese
-- If input is non-English, translate internally first
-- Be structured, practical, and realistic
-
-FORMAT:
-Day 1:
-Morning:
-Afternoon:
-Evening:
-
-Then include:
-- Budget breakdown
-- Travel tips
-            `.trim(),
+            content: prompt,
           },
           {
             role: "user",
@@ -141,27 +165,23 @@ Preferences: ${preferences}
   );
 
   const data = await deepseekResponse.json();
-
   const result = data?.choices?.[0]?.message?.content ?? "";
 
   /* -----------------------------
-     💳 credits update
+     💳 credits
   ------------------------------ */
   if (plan !== "pro") {
     await supabaseAdmin
       .from("users")
       .update({
-        credits: Math.max((credits ?? 1) - 1, 0),
+        credits: Math.max(credits - 1, 0),
       })
       .eq("id", user.id);
   }
 
-  /* -----------------------------
-     📦 response
-  ------------------------------ */
   return Response.json({
     result,
     plan,
-    creditsRemaining: plan === "pro" ? null : Math.max((credits ?? 1) - 1, 0),
+    creditsRemaining: plan === "pro" ? null : Math.max(credits - 1, 0),
   });
 }
