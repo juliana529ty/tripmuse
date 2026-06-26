@@ -1,18 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -21,7 +8,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
 
   title: {
-    default: "TripMuse — AI Travel Planner",
+    default: "TripMuse - AI Travel Planner",
     template: "%s | TripMuse",
   },
 
@@ -37,8 +24,6 @@ export const metadata: Metadata = {
     "trip planner",
     "travel itinerary",
     "travel journal",
-    "旅行规划",
-    "AI 旅行助手",
   ],
 
   authors: [
@@ -54,7 +39,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "TripMuse",
-    title: "TripMuse — AI Travel Planner",
+    title: "TripMuse - AI Travel Planner",
     description:
       "Plan smarter and travel happier with a personalized AI itinerary.",
     locale: "en_US",
@@ -62,7 +47,7 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary",
-    title: "TripMuse — AI Travel Planner",
+    title: "TripMuse - AI Travel Planner",
     description:
       "Turn your travel ideas into a personalized AI itinerary.",
   },
@@ -106,10 +91,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className="h-full antialiased">
       <body className="min-h-full bg-[#fafafa] text-gray-950">
         {children}
       </body>

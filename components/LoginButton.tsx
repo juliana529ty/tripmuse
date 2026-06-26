@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginButton() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -37,7 +39,7 @@ export default function LoginButton() {
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "http://localhost:3000",
+        redirectTo: window.location.origin,
       },
     });
   };
@@ -49,29 +51,28 @@ export default function LoginButton() {
 
   if (user) {
     return (
-      <div className="absolute top-4 right-4 bg-white shadow rounded-xl p-3 border">
-        <div className="flex items-center gap-3">
-          {user.user_metadata?.avatar_url && (
-            <img
-              src={user.user_metadata.avatar_url}
-              alt="avatar"
-              className="w-10 h-10 rounded-full"
-            />
-          )}
+      <div className="flex items-center gap-3">
+        {user.user_metadata?.avatar_url && (
+          <img
+            src={user.user_metadata.avatar_url}
+            alt="User avatar"
+            className="h-9 w-9 rounded-full"
+          />
+        )}
 
-          <div>
-            <p className="font-semibold">
-              {user.user_metadata?.full_name || "TripMuse User"}
-            </p>
-            <p className="text-xs text-gray-500">{user.email}</p>
-          </div>
-        </div>
+        <Link
+          href="/profile"
+          className="hidden max-w-[180px] truncate text-sm font-semibold text-gray-700 transition hover:text-gray-950 sm:block"
+        >
+          {user.user_metadata?.full_name || user.email || "TripMuse User"}
+        </Link>
 
         <button
+          type="button"
           onClick={logout}
-          className="mt-3 w-full bg-red-500 text-white rounded-lg py-2"
+          className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
         >
-          Logout
+          Log out
         </button>
       </div>
     );
@@ -79,8 +80,9 @@ export default function LoginButton() {
 
   return (
     <button
+      type="button"
       onClick={loginWithGoogle}
-      className="absolute top-4 right-4 bg-black text-white px-4 py-2 rounded-lg text-sm"
+      className="rounded-xl bg-gray-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
     >
       Continue with Google
     </button>

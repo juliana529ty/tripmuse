@@ -6,28 +6,24 @@ export async function POST(request: Request) {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
-    // ✅ MVP 安全兜底：没有 Stripe key 也不会炸
     if (!secretKey) {
       return Response.json(
         {
           url: null,
-          error: "Stripe 未启用（V3 MVP 模式）",
+          error: "Stripe is not enabled in MVP mode.",
         },
         { status: 200 }
       );
     }
 
     const stripe = new Stripe(secretKey);
-
     const requestUrl = new URL(request.url);
-
     const siteUrl = (
       process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin
     ).replace(/\/$/, "");
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-
       line_items: [
         {
           price_data: {
@@ -45,7 +41,6 @@ export async function POST(request: Request) {
           quantity: 1,
         },
       ],
-
       success_url: `${siteUrl}/?success=1`,
       cancel_url: `${siteUrl}/?canceled=1`,
     });

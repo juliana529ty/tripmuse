@@ -10,17 +10,11 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafafa] px-5 py-16">
-      <div className="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-pink-200/40 blur-3xl" />
-      <div className="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-blue-200/40 blur-3xl" />
-
-      <main className="relative w-full max-w-md">
-        <Link
-          href="/"
-          className="mx-auto mb-8 flex w-fit items-center gap-3"
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-950 text-xl text-white shadow-lg">
-            ✈️
+    <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-5 py-16">
+      <main className="w-full max-w-md">
+        <Link href="/" className="mx-auto mb-8 flex w-fit items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-950 text-sm font-bold text-white shadow-lg">
+            TM
           </span>
 
           <span>
@@ -34,12 +28,8 @@ export default function LoginPage() {
           </span>
         </Link>
 
-        <section className="rounded-[2rem] border border-gray-200 bg-white p-8 text-center shadow-2xl shadow-gray-200/60 sm:p-10">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-pink-100 via-purple-100 to-blue-100 text-3xl">
-            🧳
-          </div>
-
-          <p className="mt-6 text-sm font-semibold uppercase tracking-[0.25em] text-purple-500">
+        <section className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
+          <p className="text-sm font-semibold uppercase tracking-[0.25em] text-purple-500">
             Welcome to TripMuse
           </p>
 
@@ -48,10 +38,11 @@ export default function LoginPage() {
           </h1>
 
           <p className="mt-4 text-sm leading-7 text-gray-500">
-            登录后可以生成 AI 行程、保存旅行灵感、收藏计划并创建公开分享页面。
+            Sign in to generate AI itineraries, save travel ideas, favorite
+            plans, and create public share pages.
           </p>
 
-          <div className="mt-8 rounded-2xl border border-gray-200 bg-[#fafafa] p-4">
+          <div className="mt-8 flex justify-center rounded-xl border border-gray-200 bg-[#fafafa] p-4">
             <LoginButton />
           </div>
 
@@ -65,7 +56,7 @@ export default function LoginPage() {
             href="/"
             className="text-sm font-semibold text-gray-500 transition hover:text-gray-950"
           >
-            ← Return to home
+            Return to home
           </Link>
         </div>
       </main>

@@ -8,28 +8,25 @@ import PlannerForm from "@/components/PlannerForm";
 import RecentTrips from "@/components/RecentTrips";
 import ResultCard from "@/components/ResultCard";
 import SkeletonCard from "@/components/SkeletonCard";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
+const MAX_FREE = 3;
+
 export default function Home() {
-  const [user, setUser] = useState<any>(null);
-
-  const MAX_FREE = 3;
-
+  const [user, setUser] = useState<User | null>(null);
   const [plan, setPlan] = useState<"free" | "pro">("free");
   const [credits, setCredits] = useState(MAX_FREE);
-
   const [destination, setDestination] = useState("");
   const [days, setDays] = useState("");
   const [budget, setBudget] = useState("");
-
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
-  const [recentTrips, setRecentTrips] = useState<any[]>([]);
+  const [recentTrips, setRecentTrips] = useState<
+    { id: string; destination?: string | null; created_at?: string | null }[]
+  >([]);
   const [loadingText, setLoadingText] = useState("");
 
-  // -------------------------
-  // AUTH
-  // -------------------------
   useEffect(() => {
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
@@ -47,38 +44,39 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // -------------------------
-  // LOAD PLAN
-  // -------------------------
   useEffect(() => {
-    const loadPlan = async () => {
+    const loadPlanAndTrips = async () => {
       if (!user?.id) {
         setPlan("free");
         setCredits(MAX_FREE);
+        setRecentTrips([]);
         return;
       }
 
-      const { data } = await supabase
+      const { data: profile } = await supabase
         .from("users")
         .select("plan, credits")
         .eq("id", user.id)
         .maybeSingle();
 
-      setPlan(data?.plan === "pro" ? "pro" : "free");
-
+      setPlan(profile?.plan === "pro" ? "pro" : "free");
       setCredits(
-        data?.plan === "pro"
-          ? -1
-          : data?.credits ?? MAX_FREE
+        profile?.plan === "pro" ? -1 : profile?.credits ?? MAX_FREE
       );
+
+      const { data: trips } = await supabase
+        .from("trip_records")
+        .select("id, destination, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(3);
+
+      setRecentTrips(trips || []);
     };
 
-    loadPlan();
+    loadPlanAndTrips();
   }, [user?.id]);
 
-  // -------------------------
-  // GENERATE (GROWTH VERSION)
-  // -------------------------
   const generatePlan = async () => {
     if (!user) {
       alert("Please log in first.");
@@ -86,7 +84,7 @@ export default function Home() {
     }
 
     if (plan !== "pro" && credits <= 0) {
-      alert("You're out of free tries. Upgrade to Pro to keep going!");
+      alert("You are out of free trips. Upgrade to Pro to keep planning.");
       return;
     }
 
@@ -115,35 +113,40 @@ export default function Home() {
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.upgrade) {
+        if (data.upgrade || data.code === "FREE_LIMIT_REACHED") {
           alert("Upgrade to Pro to unlock unlimited generation.");
         }
-        throw new Error(data.error);
+
+        throw new Error(data.error || "Generation failed.");
       }
 
       setResult(data.result);
-
-      // 💰 Growth核心：更新状态
       setPlan(data.plan ?? "free");
       setCredits(
-        data.plan === "pro"
-          ? -1
-          : data.creditsRemaining ?? credits
+        data.plan === "pro" ? -1 : data.creditsRemaining ?? credits
       );
 
-      // ⚡ Growth hint（核心）
       if (data.upgradeHint) {
-        setLoadingText("⚡ You're running out of free credits. Upgrade to Pro to unlock unlimited generation.");
+        setLoadingText(
+          "You are running low on free trips. Upgrade to Pro for unlimited planning."
+        );
       }
 
-      // save trip
-      await supabase.from("trip_records").insert({
-        user_id: user.id,
-        destination,
-        days,
-        budget,
-        result: data.result,
-      });
+      const { data: savedTrip } = await supabase
+        .from("trip_records")
+        .insert({
+          user_id: user.id,
+          destination,
+          days,
+          budget,
+          result: data.result,
+        })
+        .select("id, destination, created_at")
+        .single();
+
+      if (savedTrip) {
+        setRecentTrips((currentTrips) => [savedTrip, ...currentTrips].slice(0, 3));
+      }
     } catch (error) {
       console.log(error);
       alert("Failed to generate. Please try again later.");
@@ -153,9 +156,6 @@ export default function Home() {
     }
   };
 
-  // -------------------------
-  // STRIPE UPGRADE
-  // -------------------------
   const upgradeToPro = async () => {
     const { data } = await supabase.auth.getSession();
 
@@ -171,7 +171,7 @@ export default function Home() {
     if (json.url) {
       window.location.href = json.url;
     } else {
-      alert("Payment creation failed");
+      alert("Payment creation failed.");
     }
   };
 
@@ -179,21 +179,20 @@ export default function Home() {
     <div className="min-h-screen bg-[#fafafa] text-gray-950">
       <Navbar />
 
-      {/* 🔥 Growth Banner */}
       {plan !== "pro" && (
-        <div className="bg-yellow-100 text-yellow-800 text-center py-2 text-sm">
+        <div className="border-b border-yellow-200 bg-yellow-50 py-2 text-center text-sm text-yellow-900">
           {credits > 0
-            ? `⚡ You have ${credits} free trips left`
-            : "🚀 Upgrade to Pro for unlimited trips"}
+            ? `You have ${credits} free trips left.`
+            : "Upgrade to Pro for unlimited trips."}
         </div>
       )}
 
-      {/* Upgrade Button */}
       <div className="flex justify-center p-4">
         {plan !== "pro" && (
           <button
+            type="button"
             onClick={upgradeToPro}
-            className="px-5 py-2 bg-black text-white rounded-xl"
+            className="rounded-xl bg-gray-950 px-5 py-2 text-sm font-semibold text-white transition hover:bg-gray-800"
           >
             Upgrade to Pro
           </button>
@@ -204,7 +203,7 @@ export default function Home() {
         <Hero />
 
         <section id="planner" className="bg-white py-16">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-5xl px-5">
             <PlannerForm
               destination={destination}
               days={days}
@@ -220,7 +219,7 @@ export default function Home() {
         </section>
 
         <section className="py-10">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-5xl px-5">
             {loading ? (
               <SkeletonCard />
             ) : (
@@ -234,7 +233,7 @@ export default function Home() {
         </section>
 
         <section className="py-10">
-          <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-5xl px-5">
             <RecentTrips trips={recentTrips} />
           </div>
         </section>

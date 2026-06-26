@@ -1,71 +1,49 @@
 "use client";
 
-const EN_MAP: Record<string, string> = {
-  重庆: "Chongqing",
-  长沙: "Changsha",
-  北京: "Beijing",
-  上海: "Shanghai",
-  深圳: "Shenzhen",
-  成都: "Chengdu",
-  杭州: "Hangzhou",
-  广州: "Guangzhou",
-};
-
 type Trip = {
   id: string;
-  destination: string;
+  destination?: string | null;
   createdAt?: string;
+  created_at?: string | null;
 };
 
 export default function RecentTrips({ trips = [] }: { trips: Trip[] }) {
   return (
-    <div className="mt-10">
-      {/* Header */}
-      <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-        🕘 Recent Trips
-      </h2>
+    <section className="mt-10">
+      <h2 className="mb-4 text-lg font-bold">Recent Trips</h2>
 
-      {/* Empty state */}
       {trips.length === 0 && (
-        <p className="text-gray-400 text-sm">No trips yet.</p>
+        <p className="text-sm text-gray-400">No trips yet.</p>
       )}
 
-      {/* List */}
       <div className="space-y-4">
-        {trips.map((trip) => (
-          <div
-            key={trip.id}
-            className="border rounded-xl p-4 bg-white shadow-sm"
-          >
-            {/* Destination (FIXED i18n) */}
-            <p className="font-semibold text-sm">
-              📍 {EN_MAP[trip.destination] || trip.destination}
-            </p>
+        {trips.map((trip) => {
+          const createdAt = trip.createdAt || trip.created_at;
 
-            {/* Date */}
-            {trip.createdAt && (
-              <p className="text-xs text-gray-500 mt-1">
-                Created{" "}
-                {new Date(trip.createdAt).toLocaleDateString("en-US", {
-                  year: "numeric",
-                  month: "short",
-                  day: "numeric",
-                })}
+          return (
+            <a
+              key={trip.id}
+              href={`/trip/${trip.id}`}
+              className="block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:border-gray-300 hover:shadow-md"
+            >
+              <p className="text-sm font-semibold">
+                {trip.destination || "Untitled trip"}
               </p>
-            )}
 
-            {/* Actions */}
-            <div className="flex gap-3 mt-3 text-sm">
-              <button className="text-blue-600 hover:underline">
-                Share
-              </button>
-              <button className="text-red-500 hover:underline">
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
+              {createdAt && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Created{" "}
+                  {new Date(createdAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </p>
+              )}
+            </a>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }

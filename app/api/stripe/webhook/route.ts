@@ -3,10 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-// Stripe init（稳定写法）
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {});
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +19,6 @@ export async function POST(request: Request) {
     }
 
     const rawBody = await request.text();
-
     let event: Stripe.Event;
 
     try {
@@ -38,12 +34,8 @@ export async function POST(request: Request) {
 
     console.log("Stripe event:", event.type);
 
-    // -------------------------
-    // Checkout success
-    // -------------------------
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
-
       const userId = session.metadata?.user_id;
 
       if (!userId) {

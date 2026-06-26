@@ -13,7 +13,6 @@ export async function GET() {
     .select("id, plan, credits");
 
   for (const user of users || []) {
-    // ❌ inactive free users
     if (user.plan === "free" && user.credits === 3) {
       await supabase.from("analytics_events").insert({
         user_id: user.id,
@@ -21,7 +20,6 @@ export async function GET() {
       });
     }
 
-    // ❌ pro but no usage
     if (user.plan === "pro" && user.credits === -1) {
       await supabase.from("analytics_events").insert({
         user_id: user.id,

@@ -2,28 +2,95 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-/* -----------------------------
-   🌍 中文 → 英文映射
------------------------------- */
-const EN_MAP = {
-  重庆: "Chongqing",
-  长沙: "Changsha",
-  北京: "Beijing",
-  上海: "Shanghai",
-  深圳: "Shenzhen",
-  成都: "Chengdu",
-  杭州: "Hangzhou",
-  广州: "Guangzhou",
-};
+const REQUIRED_BUDGET_KEYS = ["hotel", "food", "transport", "ticket", "extra"];
 
 function normalizeDestination(input) {
-  if (!input) return "";
-  return EN_MAP[input] || input;
+  return String(input || "").trim();
 }
 
-/* -----------------------------
-   🚀 MAIN API
------------------------------- */
+function asString(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value.trim() || fallback;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return fallback;
+}
+
+function asStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => asString(item))
+    .filter(Boolean);
+}
+
+function normalizeDays(value) {
+  if (!Array.isArray(value)) return [];
+
+  return value.map((day, index) => {
+    const record = day && typeof day === "object" ? day : {};
+
+    return {
+      day: Number(record.day || index + 1),
+      morning: asString(record.morning),
+      afternoon: asString(record.afternoon),
+      evening: asString(record.evening),
+      tip: asString(record.tip),
+    };
+  });
+}
+
+function normalizeBudget(value) {
+  const record = value && typeof value === "object" ? value : {};
+
+  return REQUIRED_BUDGET_KEYS.reduce((budget, key) => {
+    budget[key] = asString(record[key]);
+    return budget;
+  }, {});
+}
+
+function normalizeTripResult(value, destination, days, budget) {
+  const record = value && typeof value === "object" ? value : {};
+  const normalizedDays = normalizeDays(record.days);
+
+  return {
+    title: asString(record.title, `${destination} ${days}-Day Trip`),
+    overview: asString(
+      record.overview,
+      `A personalized TripMuse itinerary for ${destination}.`
+    ),
+    days: normalizedDays,
+    food: asStringArray(record.food),
+    spots: asStringArray(record.spots || record.highlights),
+    tips: asStringArray(record.tips),
+    budget: normalizeBudget(record.budget || { extra: budget }),
+  };
+}
+
+function extractJsonObject(raw) {
+  if (!raw || typeof raw !== "string") return null;
+
+  const cleaned = raw
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+
+    if (start === -1 || end === -1 || end <= start) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function POST(request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,64 +98,93 @@ export async function POST(request) {
   const deepseekApiKey = process.env.DEEPSEEK_API_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !deepseekApiKey) {
-    return Response.json({ error: "Missing env config" }, { status: 500 });
+    return Response.json({ error: "Missing environment configuration." }, { status: 500 });
   }
 
   const auth = request.headers.get("authorization");
   const token = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
 
   if (!token) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+  const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 
   const {
     data: { user },
+    error: userError,
   } = await supabaseAuth.auth.getUser(token);
 
-  if (!user) {
-    return Response.json({ error: "Invalid user" }, { status: 401 });
+  if (userError || !user) {
+    return Response.json({ error: "Invalid user." }, { status: 401 });
   }
 
-  const body = await request.json();
+  let body;
 
-  const destinationRaw = String(body?.destination || "").trim();
-  const days = Number(body?.days || 3);
-  const budget = String(body?.budget || "").trim();
-  const preferences = String(body?.preferences || "").trim();
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
 
-  if (!destinationRaw || !days || !budget) {
-    return Response.json({ error: "Missing fields" }, { status: 400 });
+  const destinationRaw = normalizeDestination(body?.destination);
+  const tripDays = Number(body?.days || 3);
+  const budget = asString(body?.budget);
+  const preferences = asString(body?.preferences);
+
+  if (!destinationRaw || !tripDays || tripDays < 1 || !budget) {
+    return Response.json(
+      { error: "Destination, days, and budget are required." },
+      { status: 400 }
+    );
   }
 
   const destination = normalizeDestination(destinationRaw);
+  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
-
-  const { data: profile } = await supabaseAdmin
+  const { data: profile, error: profileError } = await supabaseAdmin
     .from("users")
     .select("plan, credits")
     .eq("id", user.id)
     .maybeSingle();
 
-  const plan = profile?.plan === "pro" ? "pro" : "free";
-  let credits = plan === "pro" ? -1 : profile?.credits ?? 3;
-
-  if (plan !== "pro" && credits <= 0) {
-    return Response.json({ error: "No credits left" }, { status: 403 });
+  if (profileError) {
+    return Response.json({ error: "Unable to load billing profile." }, { status: 500 });
   }
 
-  /* -----------------------------
-     🤖 AI PROMPT (FIXED → JSON ONLY)
-  ------------------------------ */
-  const prompt = `
-You are TripMuse AI.
+  const plan = profile?.plan === "pro" ? "pro" : "free";
+  const credits = plan === "pro" ? -1 : profile?.credits ?? 3;
 
-CRITICAL RULE:
-Return ONLY valid JSON. No markdown. No explanation.
+  if (plan !== "pro" && credits <= 0) {
+    return Response.json(
+      {
+        error: "No free trips remaining.",
+        code: "FREE_LIMIT_REACHED",
+        upgrade: true,
+        plan,
+        creditsRemaining: 0,
+      },
+      { status: 403 }
+    );
+  }
 
-JSON FORMAT:
+  const systemPrompt = `
+You are TripMuse AI, a production travel planning engine.
+
+Return strict JSON only. Do not include markdown, code fences, commentary,
+explanations, or any text outside the JSON object.
+
+The JSON object must have exactly this top-level shape:
 {
   "title": "string",
   "overview": "string",
@@ -112,66 +208,70 @@ JSON FORMAT:
     "extra": "string"
   }
 }
+
+Create one entry in "days" for each requested travel day.
+All copy must be in English.
 `.trim();
 
-  const deepseekResponse = await fetch(
-    "https://api.deepseek.com/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${deepseekApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        temperature: 0.7,
-        messages: [
-          { role: "system", content: prompt },
-          {
-            role: "user",
-            content: `
-Destination: ${destination}
-Days: ${days}
-Budget: ${budget}
-Preferences: ${preferences}
-            `.trim(),
-          },
-        ],
-      }),
-    }
-  );
+  const deepseekResponse = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${deepseekApiKey}`,
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      temperature: 0.4,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: JSON.stringify({
+            destination,
+            days: tripDays,
+            budget,
+            preferences,
+          }),
+        },
+      ],
+    }),
+  });
 
-  const data = await deepseekResponse.json();
-
-  const raw = data?.choices?.[0]?.message?.content;
-
-  let result;
-
-  try {
-    result = JSON.parse(raw);
-  } catch (e) {
-    console.error("AI JSON parse failed:", raw);
+  if (!deepseekResponse.ok) {
     return Response.json(
-      { error: "Invalid AI response format" },
-      { status: 500 }
+      { error: "AI generation failed." },
+      { status: deepseekResponse.status || 500 }
     );
   }
 
-  /* -----------------------------
-     💳 credits
-  ------------------------------ */
+  const data = await deepseekResponse.json();
+  const raw = data?.choices?.[0]?.message?.content;
+  const parsed = extractJsonObject(raw);
+
+  if (!parsed) {
+    console.error("AI JSON parse failed:", raw);
+    return Response.json({ error: "Invalid AI response format." }, { status: 500 });
+  }
+
+  const result = normalizeTripResult(parsed, destination, tripDays, budget);
+  const creditsRemaining = plan === "pro" ? null : Math.max(credits - 1, 0);
+
   if (plan !== "pro") {
-    await supabaseAdmin
+    const { error: creditsError } = await supabaseAdmin
       .from("users")
-      .update({
-        credits: Math.max(credits - 1, 0),
-      })
+      .update({ credits: creditsRemaining })
       .eq("id", user.id);
+
+    if (creditsError) {
+      console.log("Credit update failed:", creditsError);
+    }
   }
 
   return Response.json({
     result,
     plan,
-    creditsRemaining: plan === "pro" ? null : Math.max(credits - 1, 0),
+    creditsRemaining,
+    upgradeHint: plan !== "pro" && creditsRemaining <= 1,
   });
 }

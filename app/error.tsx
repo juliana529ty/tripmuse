@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function ErrorPage({
   error,
@@ -16,13 +17,10 @@ export default function ErrorPage({
   }, [error]);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafafa] px-5 py-16">
-      <div className="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-pink-200/30 blur-3xl" />
-      <div className="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-purple-200/30 blur-3xl" />
-
-      <main className="relative w-full max-w-md rounded-[2rem] border border-gray-200 bg-white p-8 text-center shadow-2xl shadow-gray-200/60 sm:p-10">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-red-50 text-3xl">
-          🛠️
+    <div className="flex min-h-screen items-center justify-center bg-[#fafafa] px-5 py-16">
+      <main className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-10">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-xl bg-red-50 text-sm font-bold text-red-600">
+          Error
         </div>
 
         <p className="mt-6 text-sm font-semibold uppercase tracking-[0.25em] text-red-500">
@@ -42,17 +40,17 @@ export default function ErrorPage({
           <button
             type="button"
             onClick={reset}
-            className="inline-flex w-full items-center justify-center rounded-2xl bg-gray-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-gray-800"
+            className="inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-gray-800"
           >
             Try again
           </button>
 
-          <a
+          <Link
             href="/"
-            className="inline-flex w-full items-center justify-center rounded-2xl border border-gray-200 bg-white px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
+            className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50"
           >
             Return home
-          </a>
+          </Link>
         </div>
 
         {error.digest && (
