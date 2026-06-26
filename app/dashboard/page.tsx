@@ -25,6 +25,7 @@ export default function DashboardPage() {
   const [trips, setTrips] = useState<TripRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [actionKeys, setActionKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const load = async () => {
@@ -67,6 +68,32 @@ export default function DashboardPage() {
     event.stopPropagation();
   };
 
+  const actionKey = (tripId: string, action: string) => `${tripId}:${action}`;
+
+  const setActionLoading = (
+    tripId: string,
+    action: string,
+    isLoading: boolean
+  ) => {
+    const key = actionKey(tripId, action);
+
+    setActionKeys((currentKeys) => {
+      const nextKeys = new Set(currentKeys);
+
+      if (isLoading) {
+        nextKeys.add(key);
+      } else {
+        nextKeys.delete(key);
+      }
+
+      return nextKeys;
+    });
+  };
+
+  const isActionLoading = (tripId: string, action: string) => {
+    return actionKeys.has(actionKey(tripId, action));
+  };
+
   const toggleFavorite = async (
     event: MouseEvent<HTMLButtonElement>,
     trip: TripRecord
@@ -74,6 +101,8 @@ export default function DashboardPage() {
     stopButtonClick(event);
 
     if (!user?.id) return;
+
+    setActionLoading(trip.id, "favorite", true);
 
     const nextFavorite = !trip.favorite;
 
@@ -97,10 +126,12 @@ export default function DashboardPage() {
         )
       );
       showToast("Favorite update failed. Please try again.");
+      setActionLoading(trip.id, "favorite", false);
       return;
     }
 
     showToast(nextFavorite ? "Trip added to favorites." : "Trip removed from favorites.");
+    setActionLoading(trip.id, "favorite", false);
   };
 
   const shareTrip = async (
@@ -110,6 +141,8 @@ export default function DashboardPage() {
     stopButtonClick(event);
 
     if (!user?.id) return;
+
+    setActionLoading(trip.id, "share", true);
 
     if (!trip.public) {
       const { error } = await supabase
@@ -121,6 +154,7 @@ export default function DashboardPage() {
       if (error) {
         console.log("Share update failed:", error);
         showToast("Unable to create a share link. Please try again.");
+        setActionLoading(trip.id, "share", false);
         return;
       }
 
@@ -140,6 +174,8 @@ export default function DashboardPage() {
       window.prompt("Copy this share link:", shareUrl);
       showToast("Share link ready.");
     }
+
+    setActionLoading(trip.id, "share", false);
   };
 
   const deleteTrip = async (
@@ -155,6 +191,8 @@ export default function DashboardPage() {
     );
 
     if (!confirmed) return;
+
+    setActionLoading(trip.id, "delete", true);
 
     const previousTrips = trips;
 
@@ -172,17 +210,49 @@ export default function DashboardPage() {
       console.log("Delete trip failed:", error);
       setTrips(previousTrips);
       showToast("Delete failed. Please try again.");
+      setActionLoading(trip.id, "delete", false);
       return;
     }
 
     showToast("Trip deleted.");
+    setActionLoading(trip.id, "delete", false);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <div className="p-10 text-gray-500">Loading dashboard...</div>
+        <main className="mx-auto max-w-6xl px-5 py-8 md:px-8">
+          <div className="rounded-xl bg-gray-950 p-6">
+            <div className="h-7 w-44 animate-pulse rounded bg-white/20" />
+            <div className="mt-3 h-4 w-64 animate-pulse rounded bg-white/10" />
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+              >
+                <div className="h-4 w-20 animate-pulse rounded bg-gray-200" />
+                <div className="mt-3 h-7 w-12 animate-pulse rounded bg-gray-200" />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 space-y-4">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"
+              >
+                <div className="h-5 w-48 animate-pulse rounded bg-gray-200" />
+                <div className="mt-3 h-4 w-32 animate-pulse rounded bg-gray-100" />
+                <div className="mt-4 h-4 w-56 animate-pulse rounded bg-gray-100" />
+              </div>
+            ))}
+          </div>
+        </main>
       </div>
     );
   }
@@ -244,10 +314,14 @@ export default function DashboardPage() {
 
         <section className="mt-6 space-y-4">
           {trips.length === 0 && (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center">
-              <h2 className="text-lg font-bold">No trips yet</h2>
-              <p className="mt-2 text-sm text-gray-500">
-                Create your first AI itinerary from the planner.
+            <div className="rounded-xl border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-gray-400">
+                Your trip library
+              </p>
+              <h2 className="mt-3 text-2xl font-bold">No trips yet</h2>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-gray-500">
+                Create your first AI itinerary and it will appear here with
+                quick access to favorites, sharing, and trip details.
               </p>
               <Link
                 href="/#planner"
@@ -269,7 +343,7 @@ export default function DashboardPage() {
                   router.push(`/trip/${trip.id}`);
                 }
               }}
-              className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-gray-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-950"
+              className="group rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-gray-950"
             >
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -294,25 +368,32 @@ export default function DashboardPage() {
                   <button
                     type="button"
                     onClick={(event) => shareTrip(event, trip)}
-                    className="rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 transition hover:bg-gray-50"
+                    disabled={isActionLoading(trip.id, "share")}
+                    className="rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Share
+                    {isActionLoading(trip.id, "share") ? "Sharing..." : "Share"}
                   </button>
 
                   <button
                     type="button"
                     onClick={(event) => toggleFavorite(event, trip)}
-                    className="rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 transition hover:bg-gray-50"
+                    disabled={isActionLoading(trip.id, "favorite")}
+                    className="rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {trip.favorite ? "Unfavorite" : "Favorite"}
+                    {isActionLoading(trip.id, "favorite")
+                      ? "Saving..."
+                      : trip.favorite
+                        ? "Unfavorite"
+                        : "Favorite"}
                   </button>
 
                   <button
                     type="button"
                     onClick={(event) => deleteTrip(event, trip)}
-                    className="rounded-xl border border-red-100 px-3 py-2 font-semibold text-red-600 transition hover:bg-red-50"
+                    disabled={isActionLoading(trip.id, "delete")}
+                    className="rounded-xl border border-red-100 px-3 py-2 font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Delete
+                    {isActionLoading(trip.id, "delete") ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </div>

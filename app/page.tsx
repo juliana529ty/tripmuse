@@ -83,6 +83,11 @@ export default function Home() {
       return;
     }
 
+    if (!destination.trim() || !days.trim() || !budget.trim()) {
+      alert("Please enter a destination, trip length, and budget.");
+      return;
+    }
+
     if (plan !== "pro" && credits <= 0) {
       alert("You are out of free trips. Upgrade to Pro to keep planning.");
       return;

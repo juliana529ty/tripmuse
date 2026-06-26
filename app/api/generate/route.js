@@ -22,34 +22,61 @@ function asStringArray(value) {
     .filter(Boolean);
 }
 
-function normalizeDays(value) {
-  if (!Array.isArray(value)) return [];
-
-  return value.map((day, index) => {
-    const record = day && typeof day === "object" ? day : {};
-
-    return {
-      day: Number(record.day || index + 1),
-      morning: asString(record.morning),
-      afternoon: asString(record.afternoon),
-      evening: asString(record.evening),
-      tip: asString(record.tip),
-    };
-  });
+function buildFallbackDay(index, destination) {
+  return {
+    day: index + 1,
+    morning: `Start with a relaxed local breakfast and explore a central area of ${destination}.`,
+    afternoon: `Visit one major highlight in ${destination} and leave time for nearby streets or viewpoints.`,
+    evening: `Enjoy dinner in a lively neighborhood and keep the evening flexible.`,
+    tip: "Confirm opening hours, transit times, and reservations before you go.",
+  };
 }
 
-function normalizeBudget(value) {
+function normalizeDays(value, requestedDays, destination) {
+  const sourceDays = Array.isArray(value) ? value : [];
+  const totalDays = Math.max(Number(requestedDays) || 1, sourceDays.length, 1);
+  const normalizedDays = [];
+
+  for (let index = 0; index < totalDays; index += 1) {
+    const day = sourceDays[index];
+    const record = day && typeof day === "object" ? day : {};
+    const fallbackDay = buildFallbackDay(index, destination);
+
+    normalizedDays.push({
+      day: Number(record.day || fallbackDay.day),
+      morning: asString(record.morning, fallbackDay.morning),
+      afternoon: asString(record.afternoon, fallbackDay.afternoon),
+      evening: asString(record.evening, fallbackDay.evening),
+      tip: asString(record.tip, fallbackDay.tip),
+    });
+  }
+
+  return normalizedDays;
+}
+
+function normalizeBudget(value, userBudget) {
   const record = value && typeof value === "object" ? value : {};
+  const fallbackBudget = {
+    hotel: "Choose lodging that fits your stated budget and preferred comfort level.",
+    food: "Reserve part of your budget for local restaurants, cafes, snacks, and water.",
+    transport: "Plan for local transit, ride-hailing, airport transfers, and short walks.",
+    ticket: "Set aside funds for attractions, museums, tours, and timed-entry tickets.",
+    extra: userBudget || "Keep a small buffer for souvenirs, tips, and unexpected changes.",
+  };
 
   return REQUIRED_BUDGET_KEYS.reduce((budget, key) => {
-    budget[key] = asString(record[key]);
+    budget[key] = asString(record[key], fallbackBudget[key]);
     return budget;
   }, {});
 }
 
+function withFallbackItems(items, fallbacks) {
+  return items.length > 0 ? items : fallbacks;
+}
+
 function normalizeTripResult(value, destination, days, budget) {
   const record = value && typeof value === "object" ? value : {};
-  const normalizedDays = normalizeDays(record.days);
+  const normalizedDays = normalizeDays(record.days, days, destination);
 
   return {
     title: asString(record.title, `${destination} ${days}-Day Trip`),
@@ -58,10 +85,19 @@ function normalizeTripResult(value, destination, days, budget) {
       `A personalized TripMuse itinerary for ${destination}.`
     ),
     days: normalizedDays,
-    food: asStringArray(record.food),
-    spots: asStringArray(record.spots || record.highlights),
-    tips: asStringArray(record.tips),
-    budget: normalizeBudget(record.budget || { extra: budget }),
+    food: withFallbackItems(asStringArray(record.food), [
+      "Try one local breakfast spot, one casual lunch, and one memorable dinner.",
+      "Check recent reviews and reservation availability before committing.",
+    ]),
+    spots: withFallbackItems(asStringArray(record.spots || record.highlights), [
+      `A central landmark or signature neighborhood in ${destination}.`,
+      "A scenic viewpoint, museum, market, or walkable local district.",
+    ]),
+    tips: withFallbackItems(asStringArray(record.tips), [
+      "Keep travel times realistic and leave room for rest between stops.",
+      "Save offline maps, booking confirmations, and emergency contact details.",
+    ]),
+    budget: normalizeBudget(record.budget || { extra: budget }, budget),
   };
 }
 

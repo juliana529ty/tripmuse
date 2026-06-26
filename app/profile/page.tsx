@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import Footer from "@/components/Footer";
@@ -136,9 +137,11 @@ export default function ProfilePage() {
           <section className="rounded-xl bg-gray-950 p-7 text-white shadow-xl shadow-gray-300/60 md:p-10">
             <div className="flex flex-col gap-7 sm:flex-row sm:items-center">
               {avatarUrl ? (
-                <img
+                <Image
                   src={avatarUrl}
                   alt={`${fullName} avatar`}
+                  width={96}
+                  height={96}
                   className="h-24 w-24 rounded-xl border border-white/20 object-cover shadow-xl"
                 />
               ) : (

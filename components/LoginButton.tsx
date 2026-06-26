@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
@@ -53,10 +54,12 @@ export default function LoginButton() {
     return (
       <div className="flex items-center gap-3">
         {user.user_metadata?.avatar_url && (
-          <img
+          <Image
             src={user.user_metadata.avatar_url}
             alt="User avatar"
-            className="h-9 w-9 rounded-full"
+            width={36}
+            height={36}
+            className="h-9 w-9 rounded-full object-cover"
           />
         )}
 

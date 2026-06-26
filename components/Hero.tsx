@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Hero() {
   return (
     <section className="border-b border-gray-200 bg-white px-5 py-16 text-center md:py-20">
@@ -27,12 +29,12 @@ export default function Hero() {
             Plan my trip
           </a>
 
-          <a
+          <Link
             href="/dashboard"
             className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-7 py-4 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 sm:w-auto"
           >
             View my trips
-          </a>
+          </Link>
         </div>
 
         <div className="mx-auto mt-12 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">

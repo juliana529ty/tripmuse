@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
-import ResultCard from "@/components/ResultCard";
+import ResultCard, { getTripExportData } from "@/components/ResultCard";
 import { supabase } from "@/lib/supabase";
 
 type Trip = {
@@ -20,6 +20,8 @@ type Trip = {
   public: boolean | null;
   created_at: string;
 };
+
+type TripExportData = ReturnType<typeof getTripExportData>;
 
 function formatCreatedDate(date?: string) {
   if (!date) return "Recently";
@@ -39,6 +41,171 @@ function formatBudget(value: string | number | null | undefined) {
   return String(value);
 }
 
+function PdfSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6">
+      <h2 className="text-lg font-bold text-gray-950">{title}</h2>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function TripPdfDocument({
+  trip,
+  exportData,
+}: {
+  trip: Trip;
+  exportData: TripExportData;
+}) {
+  const budgetEntries = Object.entries(exportData.budget);
+
+  return (
+    <div className="w-[794px] bg-white p-10 text-gray-950">
+      <section className="rounded-2xl bg-gray-950 p-8 text-white">
+        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">
+          TripMuse AI Travel Plan
+        </p>
+
+        <h1 className="mt-4 text-4xl font-black leading-tight">
+          {exportData.destination}
+        </h1>
+
+        <p className="mt-4 max-w-[620px] text-sm leading-7 text-white/70">
+          {exportData.title}
+        </p>
+
+        <div className="mt-7 grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-white/10 p-4">
+            <p className="text-xs text-white/50">Duration</p>
+            <p className="mt-1 text-lg font-bold">{trip.days} days</p>
+          </div>
+
+          <div className="rounded-xl bg-white/10 p-4">
+            <p className="text-xs text-white/50">Budget</p>
+            <p className="mt-1 text-lg font-bold">{formatBudget(trip.budget)}</p>
+          </div>
+
+          <div className="rounded-xl bg-white/10 p-4">
+            <p className="text-xs text-white/50">Created</p>
+            <p className="mt-1 text-sm font-bold">
+              {formatCreatedDate(trip.created_at)}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="mt-6 space-y-5">
+        <PdfSection title="Trip Summary">
+          <dl className="grid grid-cols-2 gap-4 text-sm">
+            <div className="rounded-xl bg-gray-50 p-4">
+              <dt className="font-semibold text-gray-500">Destination</dt>
+              <dd className="mt-1 font-bold text-gray-950">
+                {exportData.destination}
+              </dd>
+            </div>
+
+            <div className="rounded-xl bg-gray-50 p-4">
+              <dt className="font-semibold text-gray-500">Title</dt>
+              <dd className="mt-1 font-bold text-gray-950">
+                {exportData.title}
+              </dd>
+            </div>
+          </dl>
+        </PdfSection>
+
+        <PdfSection title="Day-by-Day Itinerary">
+          <div className="space-y-4">
+            {exportData.days.length > 0 ? (
+              exportData.days.map((day) => (
+                <article
+                  key={`${day.day}-${day.title}`}
+                  className="rounded-xl border border-gray-100 bg-gray-50 p-5"
+                >
+                  <h3 className="font-bold text-gray-950">{day.title}</h3>
+                  <div className="mt-3 space-y-2 text-sm leading-6 text-gray-700">
+                    <p>
+                      <span className="font-semibold text-gray-950">Morning:</span>{" "}
+                      {day.morning || "Not provided."}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-950">Afternoon:</span>{" "}
+                      {day.afternoon || "Not provided."}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-gray-950">Evening:</span>{" "}
+                      {day.evening || "Not provided."}
+                    </p>
+                    <p className="rounded-lg bg-amber-50 p-3 text-amber-800">
+                      <span className="font-semibold">Tip:</span>{" "}
+                      {day.tip || "Not provided."}
+                    </p>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500">No daily itinerary provided.</p>
+            )}
+          </div>
+        </PdfSection>
+
+        <div className="grid grid-cols-2 gap-5">
+          <PdfSection title="Highlights">
+            <ul className="space-y-2 text-sm leading-6 text-gray-700">
+              {(exportData.highlights.length > 0
+                ? exportData.highlights
+                : ["No highlights provided."]
+              ).map((item) => (
+                <li key={item}>- {item}</li>
+              ))}
+            </ul>
+          </PdfSection>
+
+          <PdfSection title="Food">
+            <ul className="space-y-2 text-sm leading-6 text-gray-700">
+              {(exportData.food.length > 0
+                ? exportData.food
+                : ["No food recommendations provided."]
+              ).map((item) => (
+                <li key={item}>- {item}</li>
+              ))}
+            </ul>
+          </PdfSection>
+        </div>
+
+        <PdfSection title="Travel Tips">
+          <ul className="space-y-2 text-sm leading-6 text-gray-700">
+            {(exportData.tips.length > 0
+              ? exportData.tips
+              : ["No travel tips provided."]
+            ).map((item) => (
+              <li key={item}>- {item}</li>
+            ))}
+          </ul>
+        </PdfSection>
+
+        <PdfSection title="Budget">
+          <div className="grid grid-cols-2 gap-3">
+            {budgetEntries.map(([key, value]) => (
+              <div key={key} className="rounded-xl bg-gray-50 p-4 text-sm">
+                <p className="font-semibold capitalize text-gray-950">{key}</p>
+                <p className="mt-1 leading-6 text-gray-600">
+                  {value || "Not provided."}
+                </p>
+              </div>
+            ))}
+          </div>
+        </PdfSection>
+      </div>
+    </div>
+  );
+}
+
 export default function TripDetailPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -47,9 +214,11 @@ export default function TripDetailPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [updatingFavorite, setUpdatingFavorite] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pdfRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let pageIsActive = true;
@@ -186,6 +355,60 @@ export default function TripDetailPage() {
     }
   };
 
+  const exportPdf = async () => {
+    if (!trip || !pdfRef.current || exportingPdf) return;
+
+    setExportingPdf(true);
+
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const canvas = await html2canvas(pdfRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+      });
+
+      const imageData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 32;
+      const imageWidth = pageWidth - margin * 2;
+      const imageHeight = (canvas.height * imageWidth) / canvas.width;
+      const usablePageHeight = pageHeight - margin * 2;
+
+      let remainingHeight = imageHeight;
+      let y = margin;
+
+      pdf.addImage(imageData, "PNG", margin, y, imageWidth, imageHeight);
+      remainingHeight -= usablePageHeight;
+
+      while (remainingHeight > 0) {
+        pdf.addPage();
+        y -= usablePageHeight;
+        pdf.addImage(imageData, "PNG", margin, y, imageWidth, imageHeight);
+        remainingHeight -= usablePageHeight;
+      }
+
+      const fileName = `${trip.destination || "tripmuse"}-itinerary.pdf`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      pdf.save(fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`);
+      showToast("PDF exported.");
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      showToast("PDF export failed. Please try again.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#fafafa]">
@@ -249,17 +472,19 @@ export default function TripDetailPage() {
               This trip may have been deleted or may not belong to the current
               signed-in account.
             </p>
-            <a
+            <Link
               href="/dashboard"
               className="mt-7 inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-gray-800"
             >
               Back to Dashboard
-            </a>
+            </Link>
           </section>
         </main>
       </div>
     );
   }
+
+  const exportData = getTripExportData(trip);
 
   return (
     <div className="min-h-screen bg-[#fafafa] text-gray-950 print:bg-white">
@@ -270,12 +495,12 @@ export default function TripDetailPage() {
       <main className="px-5 py-8 md:px-8 md:py-12 print:px-0 print:py-0">
         <div className="mx-auto max-w-6xl space-y-8">
           <div className="print:hidden">
-            <a
+            <Link
               href="/dashboard"
               className="inline-flex items-center text-sm font-semibold text-gray-500 transition hover:text-gray-950"
             >
               Back to My Trips
-            </a>
+            </Link>
           </div>
 
           <section className="rounded-xl bg-gray-950 p-7 text-white shadow-xl shadow-gray-300/50 md:p-10 print:rounded-none print:bg-white print:p-0 print:text-gray-950 print:shadow-none">
@@ -367,10 +592,30 @@ export default function TripDetailPage() {
               >
                 Print
               </button>
+
+              <button
+                type="button"
+                onClick={exportPdf}
+                disabled={exportingPdf}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingPdf && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                )}
+                {exportingPdf ? "Exporting PDF..." : "Export PDF"}
+              </button>
             </div>
           </section>
 
           <ResultCard result={trip.result} />
+
+          <div
+            ref={pdfRef}
+            aria-hidden="true"
+            className="pointer-events-none fixed left-[-10000px] top-0 z-[-1]"
+          >
+            <TripPdfDocument trip={trip} exportData={exportData} />
+          </div>
         </div>
       </main>
 
