@@ -41,6 +41,40 @@ function formatBudget(value: string | number | null | undefined) {
   return String(value);
 }
 
+function waitForPdfRender(delay = 220) {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      window.setTimeout(resolve, delay);
+    });
+  });
+}
+
+async function waitForExportAssets(element: HTMLElement) {
+  await waitForPdfRender();
+
+  if ("fonts" in document) {
+    await document.fonts.ready;
+  }
+
+  const images = Array.from(element.querySelectorAll("img"));
+
+  await Promise.all(
+    images.map(async (image) => {
+      if (image.complete) return;
+
+      if ("decode" in image) {
+        await image.decode().catch(() => undefined);
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+      });
+    })
+  );
+}
+
 function PdfSection({
   title,
   children,
@@ -356,23 +390,85 @@ export default function TripDetailPage() {
   };
 
   const exportPdf = async () => {
-    if (!trip || !pdfRef.current || exportingPdf) return;
+    if (!trip || exportingPdf) return;
 
     setExportingPdf(true);
 
     try {
+      await waitForPdfRender();
+
+      const exportElement =
+        pdfRef.current || document.getElementById("export-area");
+
+      if (!exportElement) {
+        console.error("PDF export failed: #export-area was not found.");
+        showToast("PDF export failed. Export area was not found.");
+        return;
+      }
+
+      await waitForExportAssets(exportElement);
+
+      const exportWidth = exportElement.scrollWidth || exportElement.offsetWidth;
+      const exportHeight = exportElement.scrollHeight || exportElement.offsetHeight;
+      const exportText = exportElement.textContent?.trim();
+
+      if (!exportWidth || !exportHeight || !exportText) {
+        console.error("PDF export failed: export area is empty.", {
+          exportWidth,
+          exportHeight,
+          hasText: Boolean(exportText),
+        });
+        showToast("PDF export failed. Export content is not ready.");
+        return;
+      }
+
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
       ]);
 
-      const canvas = await html2canvas(pdfRef.current, {
+      const canvas = await html2canvas(exportElement, {
         backgroundColor: "#ffffff",
+        height: exportHeight,
+        logging: false,
         scale: 2,
+        scrollX: 0,
+        scrollY: 0,
         useCORS: true,
+        width: exportWidth,
+        windowHeight: exportHeight,
+        windowWidth: exportWidth,
+        onclone: (clonedDocument) => {
+          const clonedExportArea = clonedDocument.getElementById("export-area");
+
+          if (clonedExportArea) {
+            clonedExportArea.style.left = "0";
+            clonedExportArea.style.position = "static";
+            clonedExportArea.style.top = "0";
+            clonedExportArea.style.transform = "none";
+            clonedExportArea.style.visibility = "visible";
+            clonedExportArea.style.zIndex = "1";
+          }
+        },
       });
 
+      if (!canvas.width || !canvas.height) {
+        console.error("PDF export failed: html2canvas returned a blank canvas.", {
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+        });
+        showToast("PDF export failed. Please try again.");
+        return;
+      }
+
       const imageData = canvas.toDataURL("image/png");
+
+      if (!imageData || imageData === "data:,") {
+        console.error("PDF export failed: canvas image data is empty.");
+        showToast("PDF export failed. Please try again.");
+        return;
+      }
+
       const pdf = new jsPDF("p", "pt", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
@@ -610,9 +706,14 @@ export default function TripDetailPage() {
           <ResultCard result={trip.result} />
 
           <div
+            id="export-area"
             ref={pdfRef}
             aria-hidden="true"
-            className="pointer-events-none fixed left-[-10000px] top-0 z-[-1]"
+            className={
+              exportingPdf
+                ? "pointer-events-none fixed left-0 top-0 z-[9999] bg-white"
+                : "pointer-events-none fixed left-0 top-0 z-[-1] h-0 overflow-hidden bg-white"
+            }
           >
             <TripPdfDocument trip={trip} exportData={exportData} />
           </div>
