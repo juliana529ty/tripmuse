@@ -56,14 +56,19 @@ async function waitForExportAssets(element: HTMLElement) {
     await document.fonts.ready;
   }
 
-  const images = Array.from(element.querySelectorAll("img"));
+  const images = Array.from(
+    element.querySelectorAll<HTMLImageElement>("img")
+  );
 
   await Promise.all(
-    images.map(async (image) => {
+    images.map(async (image: HTMLImageElement) => {
       if (image.complete) return;
 
-      if ("decode" in image) {
-        await image.decode().catch(() => undefined);
+      const decodeImage =
+        typeof image.decode === "function" ? image.decode.bind(image) : null;
+
+      if (decodeImage) {
+        await decodeImage().catch(() => undefined);
         return;
       }
 
