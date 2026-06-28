@@ -194,6 +194,12 @@ function addFallbackPdfSection(
   return nextY + 28;
 }
 
+function setFallbackPdfBodyStyle(pdf: PdfDocument) {
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(55, 65, 81);
+}
+
 function saveFallbackTripPdf(
   pdf: PdfDocument,
   trip: Trip,
@@ -231,9 +237,7 @@ function saveFallbackTripPdf(
 
   y = 190;
   y = addFallbackPdfSection(pdf, "Day-by-Day Itinerary", y, pageWidth, pageHeight, margin);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-  pdf.setTextColor(55, 65, 81);
+  setFallbackPdfBodyStyle(pdf);
 
   if (exportData.days.length > 0) {
     exportData.days.forEach((day) => {
@@ -244,9 +248,7 @@ function saveFallbackTripPdf(
       pdf.text(day.title, margin, y);
       y += 20;
 
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(10);
-      pdf.setTextColor(55, 65, 81);
+      setFallbackPdfBodyStyle(pdf);
       y = addWrappedPdfText(pdf, `Morning: ${day.morning}`, margin, y, textWidth, pageHeight, margin);
       y = addWrappedPdfText(pdf, `Afternoon: ${day.afternoon}`, margin, y, textWidth, pageHeight, margin);
       y = addWrappedPdfText(pdf, `Evening: ${day.evening}`, margin, y, textWidth, pageHeight, margin);
@@ -258,24 +260,25 @@ function saveFallbackTripPdf(
   }
 
   y = addFallbackPdfSection(pdf, "Highlights", y + 8, pageWidth, pageHeight, margin);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
-  pdf.setTextColor(55, 65, 81);
+  setFallbackPdfBodyStyle(pdf);
   (exportData.highlights.length ? exportData.highlights : ["No highlights provided."]).forEach((item) => {
     y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
   });
 
   y = addFallbackPdfSection(pdf, "Food", y + 8, pageWidth, pageHeight, margin);
+  setFallbackPdfBodyStyle(pdf);
   (exportData.food.length ? exportData.food : ["No food recommendations provided."]).forEach((item) => {
     y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
   });
 
   y = addFallbackPdfSection(pdf, "Travel Tips", y + 8, pageWidth, pageHeight, margin);
+  setFallbackPdfBodyStyle(pdf);
   (exportData.tips.length ? exportData.tips : ["No travel tips provided."]).forEach((item) => {
     y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
   });
 
   y = addFallbackPdfSection(pdf, "Budget", y + 8, pageWidth, pageHeight, margin);
+  setFallbackPdfBodyStyle(pdf);
   Object.entries(exportData.budget).forEach(([key, value]) => {
     y = addWrappedPdfText(
       pdf,
