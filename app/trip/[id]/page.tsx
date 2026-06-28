@@ -22,6 +22,7 @@ type Trip = {
 };
 
 type TripExportData = ReturnType<typeof getTripExportData>;
+type PdfDocument = InstanceType<typeof import("jspdf").jsPDF>;
 
 function formatCreatedDate(date?: string) {
   if (!date) return "Recently";
@@ -44,7 +45,9 @@ function formatBudget(value: string | number | null | undefined) {
 function waitForPdfRender(delay = 220) {
   return new Promise<void>((resolve) => {
     requestAnimationFrame(() => {
-      window.setTimeout(resolve, delay);
+      requestAnimationFrame(() => {
+        window.setTimeout(resolve, delay);
+      });
     });
   });
 }
@@ -78,6 +81,212 @@ async function waitForExportAssets(element: HTMLElement) {
       });
     })
   );
+}
+
+function getExportElementSize(element: HTMLElement) {
+  return {
+    height: element.scrollHeight || element.offsetHeight,
+    width: element.scrollWidth || element.offsetWidth,
+  };
+}
+
+function isEmptyCanvas(canvas: HTMLCanvasElement) {
+  return !canvas.width || !canvas.height;
+}
+
+function applyCanvasSafePalette(clonedRoot: HTMLElement) {
+  const clonedElements = [
+    clonedRoot,
+    ...Array.from(clonedRoot.querySelectorAll<HTMLElement>("*")),
+  ];
+
+  clonedElements.forEach((clonedElement) => {
+    const classes = clonedElement.classList;
+
+    clonedElement.style.boxShadow = "none";
+
+    if (classes.contains("bg-white")) clonedElement.style.backgroundColor = "#ffffff";
+    if (classes.contains("bg-gray-950")) clonedElement.style.backgroundColor = "#030712";
+    if (classes.contains("bg-gray-50")) clonedElement.style.backgroundColor = "#f9fafb";
+    if (classes.contains("bg-gray-100")) clonedElement.style.backgroundColor = "#f3f4f6";
+    if (classes.contains("bg-amber-50")) clonedElement.style.backgroundColor = "#fffbeb";
+    if (classes.contains("bg-white/10")) clonedElement.style.backgroundColor = "rgba(255, 255, 255, 0.1)";
+
+    if (classes.contains("border-gray-200")) clonedElement.style.borderColor = "#e5e7eb";
+    if (classes.contains("border-gray-100")) clonedElement.style.borderColor = "#f3f4f6";
+
+    if (classes.contains("text-white")) clonedElement.style.color = "#ffffff";
+    if (classes.contains("text-white/70")) clonedElement.style.color = "rgba(255, 255, 255, 0.7)";
+    if (classes.contains("text-white/55")) clonedElement.style.color = "rgba(255, 255, 255, 0.55)";
+    if (classes.contains("text-white/50")) clonedElement.style.color = "rgba(255, 255, 255, 0.5)";
+    if (classes.contains("text-gray-950")) clonedElement.style.color = "#030712";
+    if (classes.contains("text-gray-700")) clonedElement.style.color = "#374151";
+    if (classes.contains("text-gray-600")) clonedElement.style.color = "#4b5563";
+    if (classes.contains("text-gray-500")) clonedElement.style.color = "#6b7280";
+    if (classes.contains("text-amber-800")) clonedElement.style.color = "#92400e";
+  });
+}
+
+function getTripPdfFileName(trip: Trip) {
+  const fileName = `${trip.destination || "tripmuse"}-itinerary.pdf`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
+}
+
+function ensurePdfPageSpace(
+  pdf: PdfDocument,
+  y: number,
+  pageHeight: number,
+  margin: number,
+  neededSpace = 24
+) {
+  if (y + neededSpace <= pageHeight - margin) {
+    return y;
+  }
+
+  pdf.addPage();
+  return margin;
+}
+
+function addWrappedPdfText(
+  pdf: PdfDocument,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  pageHeight: number,
+  margin: number,
+  lineHeight = 15
+) {
+  const lines = pdf.splitTextToSize(text || "Not provided.", maxWidth) as string[];
+  let nextY = y;
+
+  lines.forEach((line) => {
+    nextY = ensurePdfPageSpace(pdf, nextY, pageHeight, margin, lineHeight);
+    pdf.text(line, x, nextY);
+    nextY += lineHeight;
+  });
+
+  return nextY;
+}
+
+function addFallbackPdfSection(
+  pdf: PdfDocument,
+  title: string,
+  y: number,
+  pageWidth: number,
+  pageHeight: number,
+  margin: number
+) {
+  const nextY = ensurePdfPageSpace(pdf, y, pageHeight, margin, 34);
+
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
+  pdf.setTextColor(3, 7, 18);
+  pdf.text(title, margin, nextY);
+
+  pdf.setDrawColor(229, 231, 235);
+  pdf.line(margin, nextY + 8, pageWidth - margin, nextY + 8);
+
+  return nextY + 28;
+}
+
+function saveFallbackTripPdf(
+  pdf: PdfDocument,
+  trip: Trip,
+  exportData: TripExportData
+) {
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 40;
+  const textWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  pdf.setFillColor(3, 7, 18);
+  pdf.rect(0, 0, pageWidth, 155, "F");
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(24);
+  pdf.text(exportData.destination || trip.destination || "TripMuse", margin, y + 14);
+
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(11);
+  pdf.setTextColor(209, 213, 219);
+  y = addWrappedPdfText(
+    pdf,
+    exportData.title,
+    margin,
+    y + 42,
+    textWidth,
+    pageHeight,
+    margin,
+    15
+  );
+  pdf.text(`Duration: ${trip.days} days`, margin, 122);
+  pdf.text(`Budget: ${formatBudget(trip.budget)}`, margin + 160, 122);
+  pdf.text(`Created: ${formatCreatedDate(trip.created_at)}`, margin + 320, 122);
+
+  y = 190;
+  y = addFallbackPdfSection(pdf, "Day-by-Day Itinerary", y, pageWidth, pageHeight, margin);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(55, 65, 81);
+
+  if (exportData.days.length > 0) {
+    exportData.days.forEach((day) => {
+      y = ensurePdfPageSpace(pdf, y, pageHeight, margin, 70);
+      pdf.setFont("helvetica", "bold");
+      pdf.setFontSize(12);
+      pdf.setTextColor(3, 7, 18);
+      pdf.text(day.title, margin, y);
+      y += 20;
+
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.setTextColor(55, 65, 81);
+      y = addWrappedPdfText(pdf, `Morning: ${day.morning}`, margin, y, textWidth, pageHeight, margin);
+      y = addWrappedPdfText(pdf, `Afternoon: ${day.afternoon}`, margin, y, textWidth, pageHeight, margin);
+      y = addWrappedPdfText(pdf, `Evening: ${day.evening}`, margin, y, textWidth, pageHeight, margin);
+      y = addWrappedPdfText(pdf, `Tip: ${day.tip}`, margin, y, textWidth, pageHeight, margin);
+      y += 10;
+    });
+  } else {
+    y = addWrappedPdfText(pdf, "No daily itinerary provided.", margin, y, textWidth, pageHeight, margin);
+  }
+
+  y = addFallbackPdfSection(pdf, "Highlights", y + 8, pageWidth, pageHeight, margin);
+  pdf.setFont("helvetica", "normal");
+  pdf.setFontSize(10);
+  pdf.setTextColor(55, 65, 81);
+  (exportData.highlights.length ? exportData.highlights : ["No highlights provided."]).forEach((item) => {
+    y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
+  });
+
+  y = addFallbackPdfSection(pdf, "Food", y + 8, pageWidth, pageHeight, margin);
+  (exportData.food.length ? exportData.food : ["No food recommendations provided."]).forEach((item) => {
+    y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
+  });
+
+  y = addFallbackPdfSection(pdf, "Travel Tips", y + 8, pageWidth, pageHeight, margin);
+  (exportData.tips.length ? exportData.tips : ["No travel tips provided."]).forEach((item) => {
+    y = addWrappedPdfText(pdf, `- ${item}`, margin, y, textWidth, pageHeight, margin);
+  });
+
+  y = addFallbackPdfSection(pdf, "Budget", y + 8, pageWidth, pageHeight, margin);
+  Object.entries(exportData.budget).forEach(([key, value]) => {
+    y = addWrappedPdfText(
+      pdf,
+      `${key}: ${value || "Not provided."}`,
+      margin,
+      y,
+      textWidth,
+      pageHeight,
+      margin
+    );
+  });
 }
 
 function PdfSection({
@@ -406,101 +615,107 @@ export default function TripDetailPage() {
         pdfRef.current || document.getElementById("export-area");
 
       if (!exportElement) {
-        console.error("PDF export failed: #export-area was not found.");
-        showToast("PDF export failed. Export area was not found.");
-        return;
+        throw new Error("PDF export failed: #export-area was not found.");
       }
 
       await waitForExportAssets(exportElement);
 
-      const exportWidth = exportElement.scrollWidth || exportElement.offsetWidth;
-      const exportHeight = exportElement.scrollHeight || exportElement.offsetHeight;
+      const { height: exportHeight, width: exportWidth } =
+        getExportElementSize(exportElement);
       const exportText = exportElement.textContent?.trim();
 
       if (!exportWidth || !exportHeight || !exportText) {
-        console.error("PDF export failed: export area is empty.", {
-          exportWidth,
-          exportHeight,
-          hasText: Boolean(exportText),
-        });
-        showToast("PDF export failed. Export content is not ready.");
-        return;
+        throw new Error(
+          `PDF export failed: export area is empty. width=${exportWidth} height=${exportHeight} hasText=${Boolean(
+            exportText
+          )}`
+        );
       }
 
-      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
+      const { jsPDF } = await import("jspdf");
+      const fileName = getTripPdfFileName(trip);
 
-      const canvas = await html2canvas(exportElement, {
-        backgroundColor: "#ffffff",
-        height: exportHeight,
-        logging: false,
-        scale: 2,
-        scrollX: 0,
-        scrollY: 0,
-        useCORS: true,
-        width: exportWidth,
-        windowHeight: exportHeight,
-        windowWidth: exportWidth,
-        onclone: (clonedDocument) => {
-          const clonedExportArea = clonedDocument.getElementById("export-area");
+      try {
+        const { default: html2canvas } = await import("html2canvas");
+        let canvas: HTMLCanvasElement | null = null;
 
-          if (clonedExportArea) {
-            clonedExportArea.style.left = "0";
-            clonedExportArea.style.position = "static";
-            clonedExportArea.style.top = "0";
-            clonedExportArea.style.transform = "none";
-            clonedExportArea.style.visibility = "visible";
-            clonedExportArea.style.zIndex = "1";
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (attempt > 0) {
+            await waitForExportAssets(exportElement);
           }
-        },
-      });
 
-      if (!canvas.width || !canvas.height) {
-        console.error("PDF export failed: html2canvas returned a blank canvas.", {
-          canvasWidth: canvas.width,
-          canvasHeight: canvas.height,
-        });
-        showToast("PDF export failed. Please try again.");
-        return;
-      }
+          const { height, width } = getExportElementSize(exportElement);
 
-      const imageData = canvas.toDataURL("image/png");
+          canvas = await html2canvas(exportElement, {
+            backgroundColor: "#ffffff",
+            height,
+            logging: false,
+            scale: 2,
+            scrollX: 0,
+            scrollY: 0,
+            useCORS: true,
+            width,
+            windowHeight: height,
+            windowWidth: width,
+            onclone: (clonedDocument) => {
+              const clonedExportArea = clonedDocument.getElementById("export-area");
 
-      if (!imageData || imageData === "data:,") {
-        console.error("PDF export failed: canvas image data is empty.");
-        showToast("PDF export failed. Please try again.");
-        return;
-      }
+              if (clonedExportArea) {
+                applyCanvasSafePalette(clonedExportArea);
+                clonedExportArea.style.left = "0";
+                clonedExportArea.style.opacity = "1";
+                clonedExportArea.style.position = "static";
+                clonedExportArea.style.top = "0";
+                clonedExportArea.style.transform = "none";
+                clonedExportArea.style.visibility = "visible";
+                clonedExportArea.style.zIndex = "1";
+              }
+            },
+          });
 
-      const pdf = new jsPDF("p", "pt", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 32;
-      const imageWidth = pageWidth - margin * 2;
-      const imageHeight = (canvas.height * imageWidth) / canvas.width;
-      const usablePageHeight = pageHeight - margin * 2;
+          if (!isEmptyCanvas(canvas)) {
+            break;
+          }
+        }
 
-      let remainingHeight = imageHeight;
-      let y = margin;
+        if (!canvas || isEmptyCanvas(canvas)) {
+          throw new Error(
+            `PDF export failed: html2canvas returned an empty canvas. width=${
+              canvas?.width ?? 0
+            } height=${canvas?.height ?? 0}`
+          );
+        }
 
-      pdf.addImage(imageData, "PNG", margin, y, imageWidth, imageHeight);
-      remainingHeight -= usablePageHeight;
+        const imageData = canvas.toDataURL("image/png");
 
-      while (remainingHeight > 0) {
-        pdf.addPage();
-        y -= usablePageHeight;
+        const pdf = new jsPDF("p", "pt", "a4");
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const margin = 32;
+        const imageWidth = pageWidth - margin * 2;
+        const imageHeight = (canvas.height * imageWidth) / canvas.width;
+        const usablePageHeight = pageHeight - margin * 2;
+
+        let remainingHeight = imageHeight;
+        let y = margin;
+
         pdf.addImage(imageData, "PNG", margin, y, imageWidth, imageHeight);
         remainingHeight -= usablePageHeight;
+
+        while (remainingHeight > 0) {
+          pdf.addPage();
+          y -= usablePageHeight;
+          pdf.addImage(imageData, "PNG", margin, y, imageWidth, imageHeight);
+          remainingHeight -= usablePageHeight;
+        }
+
+        pdf.save(fileName);
+      } catch (captureError) {
+        console.warn("PDF screenshot export failed; using fallback PDF.", captureError);
+        const fallbackPdf = new jsPDF("p", "pt", "a4");
+        saveFallbackTripPdf(fallbackPdf, trip, exportData);
+        fallbackPdf.save(fileName);
       }
-
-      const fileName = `${trip.destination || "tripmuse"}-itinerary.pdf`
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
-
-      pdf.save(fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`);
       showToast("PDF exported.");
     } catch (error) {
       console.error("PDF export failed:", error);
@@ -714,11 +929,7 @@ export default function TripDetailPage() {
             id="export-area"
             ref={pdfRef}
             aria-hidden="true"
-            className={
-              exportingPdf
-                ? "pointer-events-none fixed left-0 top-0 z-[9999] bg-white"
-                : "pointer-events-none fixed left-0 top-0 z-[-1] h-0 overflow-hidden bg-white"
-            }
+            className="pointer-events-none fixed left-0 top-0 z-[1] bg-white opacity-0"
           >
             <TripPdfDocument trip={trip} exportData={exportData} />
           </div>
