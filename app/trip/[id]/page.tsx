@@ -23,6 +23,8 @@ type Trip = {
 
 type TripExportData = ReturnType<typeof getTripExportData>;
 type PdfDocument = InstanceType<typeof import("jspdf").jsPDF>;
+const TICKET_WIDTH = 1400;
+const TICKET_HEIGHT = 640;
 
 function formatCreatedDate(date?: string) {
   if (!date) return "Recently";
@@ -40,6 +42,58 @@ function formatBudget(value: string | number | null | undefined) {
   }
 
   return String(value);
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const imageUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = imageUrl;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(imageUrl);
+}
+
+function wrapCanvasText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines: number
+) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (context.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  lines.slice(0, maxLines).forEach((line, index) => {
+    const displayLine =
+      index === maxLines - 1 && lines.length > maxLines
+        ? `${line.replace(/[.,;:!?]+$/, "")}...`
+        : line;
+
+    context.fillText(displayLine, x, y + index * lineHeight);
+  });
 }
 
 function waitForPdfRender(delay = 220) {
@@ -134,6 +188,169 @@ function getTripPdfFileName(trip: Trip) {
     .replace(/^-|-$/g, "");
 
   return fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`;
+}
+
+function getTripTicketFileName(trip: Trip) {
+  const fileName = `${trip.destination || "tripmuse"}-ticket.png`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return fileName.endsWith(".png") ? fileName : `${fileName}.png`;
+}
+
+function drawTicketField(
+  context: CanvasRenderingContext2D,
+  label: string,
+  value: string,
+  x: number,
+  y: number,
+  width: number
+) {
+  context.fillStyle = "#6b7280";
+  context.font = "700 22px Arial, Helvetica, sans-serif";
+  context.fillText(label.toUpperCase(), x, y);
+
+  context.fillStyle = "#030712";
+  context.font = "800 34px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, value, x, y + 46, width, 38, 2);
+}
+
+function drawTicketBarcode(context: CanvasRenderingContext2D, code: string) {
+  let x = 1080;
+
+  context.fillStyle = "#030712";
+  code.split("").forEach((char, index) => {
+    const width = 4 + ((char.charCodeAt(0) + index) % 5) * 3;
+    const height = 108 + ((char.charCodeAt(0) + index) % 4) * 12;
+
+    context.fillRect(x, 448 - height, width, height);
+    x += width + 6;
+  });
+}
+
+function createTicketCode(trip: Trip) {
+  return `TM-${trip.id.slice(0, 4).toUpperCase()}-${trip.id
+    .slice(-4)
+    .toUpperCase()}`;
+}
+
+async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
+  const canvas = document.createElement("canvas");
+  canvas.width = TICKET_WIDTH;
+  canvas.height = TICKET_HEIGHT;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Canvas is not supported in this browser.");
+  }
+
+  const destination = exportData.destination || trip.destination || "Your Trip";
+  const title = exportData.title || "A personalized AI itinerary by TripMuse.";
+  const highlights =
+    exportData.highlights.length > 0
+      ? exportData.highlights.slice(0, 3)
+      : ["AI itinerary", "Travel tips", "Budget guidance"];
+  const ticketCode = createTicketCode(trip);
+
+  context.fillStyle = "#f3f4f6";
+  context.fillRect(0, 0, TICKET_WIDTH, TICKET_HEIGHT);
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(52, 58, TICKET_WIDTH - 104, TICKET_HEIGHT - 116);
+
+  context.strokeStyle = "#d1d5db";
+  context.lineWidth = 3;
+  context.strokeRect(52, 58, TICKET_WIDTH - 104, TICKET_HEIGHT - 116);
+
+  context.fillStyle = "#030712";
+  context.fillRect(52, 58, TICKET_WIDTH - 104, 104);
+
+  context.fillStyle = "#ffffff";
+  context.font = "900 34px Arial, Helvetica, sans-serif";
+  context.fillText("TRIPMUSE TICKET", 94, 123);
+
+  context.fillStyle = "rgba(255, 255, 255, 0.68)";
+  context.font = "700 20px Arial, Helvetica, sans-serif";
+  context.fillText("AI TRAVEL PASS", 1030, 122);
+
+  context.strokeStyle = "#d1d5db";
+  context.lineWidth = 2;
+  context.setLineDash([14, 14]);
+  context.beginPath();
+  context.moveTo(972, 162);
+  context.lineTo(972, 582);
+  context.stroke();
+  context.setLineDash([]);
+
+  context.fillStyle = "#f9fafb";
+  context.fillRect(78, 188, 858, 346);
+
+  context.fillStyle = "#030712";
+  context.font = "900 78px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, destination, 106, 286, 760, 82, 2);
+
+  context.fillStyle = "#4b5563";
+  context.font = "400 26px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, title, 110, 420, 760, 34, 3);
+
+  drawTicketField(
+    context,
+    "Duration",
+    `${trip.days} days`,
+    110,
+    514,
+    210
+  );
+  drawTicketField(context, "Budget", formatBudget(trip.budget), 365, 514, 230);
+  drawTicketField(
+    context,
+    "Issued",
+    formatCreatedDate(trip.created_at),
+    650,
+    514,
+    250
+  );
+
+  context.fillStyle = "#6b7280";
+  context.font = "700 20px Arial, Helvetica, sans-serif";
+  context.fillText("HIGHLIGHTS", 1030, 218);
+
+  context.fillStyle = "#030712";
+  context.font = "700 24px Arial, Helvetica, sans-serif";
+  highlights.forEach((highlight, index) => {
+    wrapCanvasText(context, `- ${highlight}`, 1030, 266 + index * 58, 270, 28, 2);
+  });
+
+  drawTicketBarcode(context, ticketCode);
+
+  context.fillStyle = "#030712";
+  context.font = "800 28px Arial, Helvetica, sans-serif";
+  context.fillText(ticketCode, 1030, 496);
+
+  context.fillStyle = "#6b7280";
+  context.font = "600 19px Arial, Helvetica, sans-serif";
+  context.fillText("KEEP THIS PASS FOR YOUR TRIP", 1030, 534);
+  context.fillText("tripmuse.ai", 1030, 562);
+
+  context.fillStyle = "#f3f4f6";
+  context.beginPath();
+  context.arc(972, 58, 30, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(972, 582, 30, 0, Math.PI * 2);
+  context.fill();
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error("Unable to create ticket image."));
+      }
+    }, "image/png");
+  });
 }
 
 function ensurePdfPageSpace(
@@ -466,6 +683,7 @@ export default function TripDetailPage() {
   const [loading, setLoading] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingTicket, setExportingTicket] = useState(false);
   const [updatingFavorite, setUpdatingFavorite] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -603,6 +821,23 @@ export default function TripDetailPage() {
       showToast("Sharing failed. Please try again.");
     } finally {
       setSharing(false);
+    }
+  };
+
+  const exportTicket = async () => {
+    if (!trip || exportingTicket) return;
+
+    setExportingTicket(true);
+
+    try {
+      const blob = await createTripTicketImage(trip, exportData);
+      downloadBlob(blob, getTripTicketFileName(trip));
+      showToast("Ticket downloaded.");
+    } catch (error) {
+      console.error("Ticket export failed:", error);
+      showToast("Ticket export failed. Please try again.");
+    } finally {
+      setExportingTicket(false);
     }
   };
 
@@ -922,6 +1157,18 @@ export default function TripDetailPage() {
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 )}
                 {exportingPdf ? "Exporting PDF..." : "Export PDF"}
+              </button>
+
+              <button
+                type="button"
+                onClick={exportTicket}
+                disabled={exportingTicket}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-gray-950 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingTicket && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-950" />
+                )}
+                {exportingTicket ? "Creating Ticket..." : "Download Ticket"}
               </button>
             </div>
           </section>
