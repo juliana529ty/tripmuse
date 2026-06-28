@@ -24,7 +24,7 @@ type Trip = {
 type TripExportData = ReturnType<typeof getTripExportData>;
 type PdfDocument = InstanceType<typeof import("jspdf").jsPDF>;
 const TICKET_WIDTH = 1400;
-const TICKET_HEIGHT = 640;
+const TICKET_HEIGHT = 760;
 
 function formatCreatedDate(date?: string) {
   if (!date) return "Recently";
@@ -212,19 +212,24 @@ function drawTicketField(
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
-  context.font = "800 34px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x, y + 46, width, 38, 2);
+  context.font = "800 32px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, value, x, y + 46, width, 38, 1);
 }
 
-function drawTicketBarcode(context: CanvasRenderingContext2D, code: string) {
-  let x = 1080;
+function drawTicketBarcode(
+  context: CanvasRenderingContext2D,
+  code: string,
+  startX: number,
+  baselineY: number
+) {
+  let x = startX;
 
   context.fillStyle = "#030712";
   code.split("").forEach((char, index) => {
     const width = 4 + ((char.charCodeAt(0) + index) % 5) * 3;
-    const height = 108 + ((char.charCodeAt(0) + index) % 4) * 12;
+    const height = 82 + ((char.charCodeAt(0) + index) % 4) * 10;
 
-    context.fillRect(x, 448 - height, width, height);
+    context.fillRect(x, baselineY - height, width, height);
     x += width + 6;
   });
 }
@@ -280,12 +285,12 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.setLineDash([14, 14]);
   context.beginPath();
   context.moveTo(972, 162);
-  context.lineTo(972, 582);
+  context.lineTo(972, 702);
   context.stroke();
   context.setLineDash([]);
 
   context.fillStyle = "#f9fafb";
-  context.fillRect(78, 188, 858, 346);
+  context.fillRect(78, 188, 858, 456);
 
   context.fillStyle = "#030712";
   context.font = "900 78px Arial, Helvetica, sans-serif";
@@ -300,17 +305,17 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
     "Duration",
     `${trip.days} days`,
     110,
-    514,
+    570,
     210
   );
-  drawTicketField(context, "Budget", formatBudget(trip.budget), 365, 514, 230);
+  drawTicketField(context, "Budget", formatBudget(trip.budget), 340, 570, 220);
   drawTicketField(
     context,
     "Issued",
     formatCreatedDate(trip.created_at),
-    650,
-    514,
-    250
+    610,
+    570,
+    300
   );
 
   context.fillStyle = "#6b7280";
@@ -318,28 +323,28 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillText("HIGHLIGHTS", 1030, 218);
 
   context.fillStyle = "#030712";
-  context.font = "700 24px Arial, Helvetica, sans-serif";
+  context.font = "700 22px Arial, Helvetica, sans-serif";
   highlights.forEach((highlight, index) => {
-    wrapCanvasText(context, `- ${highlight}`, 1030, 266 + index * 58, 270, 28, 2);
+    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 54, 280, 28, 1);
   });
 
-  drawTicketBarcode(context, ticketCode);
+  drawTicketBarcode(context, ticketCode, 1030, 544);
 
   context.fillStyle = "#030712";
   context.font = "800 28px Arial, Helvetica, sans-serif";
-  context.fillText(ticketCode, 1030, 496);
+  context.fillText(ticketCode, 1030, 604);
 
   context.fillStyle = "#6b7280";
   context.font = "600 19px Arial, Helvetica, sans-serif";
-  context.fillText("KEEP THIS PASS FOR YOUR TRIP", 1030, 534);
-  context.fillText("tripmuse.ai", 1030, 562);
+  context.fillText("KEEP THIS PASS FOR YOUR TRIP", 1030, 644);
+  context.fillText("tripmuse.ai", 1030, 674);
 
   context.fillStyle = "#f3f4f6";
   context.beginPath();
   context.arc(972, 58, 30, 0, Math.PI * 2);
   context.fill();
   context.beginPath();
-  context.arc(972, 582, 30, 0, Math.PI * 2);
+  context.arc(972, 702, 30, 0, Math.PI * 2);
   context.fill();
 
   return new Promise<Blob>((resolve, reject) => {
