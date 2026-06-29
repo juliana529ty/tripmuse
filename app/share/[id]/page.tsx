@@ -281,77 +281,19 @@ function getTripPdfFileName(trip: Trip) {
 
 function drawTicketField(
   context: CanvasRenderingContext2D,
-  icon: "duration" | "budget" | "issued",
   label: string,
   value: string,
   x: number,
   y: number,
   width: number
 ) {
-  context.save();
-  context.fillStyle = "#f3f4f6";
-  context.strokeStyle = "#d1d5db";
-  context.lineWidth = 2;
-  context.beginPath();
-  context.roundRect(x, y + 28, 52, 52, 14);
-  context.fill();
-  context.stroke();
-
-  context.strokeStyle = "#030712";
-  context.lineWidth = 3;
-  context.lineCap = "round";
-  context.lineJoin = "round";
-
-  const iconX = x + 15;
-  const iconY = y + 43;
-
-  if (icon === "duration") {
-    context.strokeRect(iconX, iconY + 4, 24, 21);
-    context.beginPath();
-    context.moveTo(iconX, iconY + 11);
-    context.lineTo(iconX + 24, iconY + 11);
-    context.moveTo(iconX + 6, iconY);
-    context.lineTo(iconX + 6, iconY + 7);
-    context.moveTo(iconX + 18, iconY);
-    context.lineTo(iconX + 18, iconY + 7);
-    context.arc(iconX + 19, iconY + 22, 7, 0, Math.PI * 2);
-    context.moveTo(iconX + 19, iconY + 18);
-    context.lineTo(iconX + 19, iconY + 22);
-    context.lineTo(iconX + 23, iconY + 24);
-    context.stroke();
-  } else if (icon === "budget") {
-    context.strokeRect(iconX, iconY + 5, 26, 21);
-    context.beginPath();
-    context.moveTo(iconX + 4, iconY + 5);
-    context.lineTo(iconX + 20, iconY);
-    context.lineTo(iconX + 22, iconY + 5);
-    context.moveTo(iconX + 20, iconY + 16);
-    context.lineTo(iconX + 24, iconY + 16);
-    context.stroke();
-  } else {
-    context.strokeRect(iconX, iconY + 4, 24, 22);
-    context.beginPath();
-    context.moveTo(iconX, iconY + 11);
-    context.lineTo(iconX + 24, iconY + 11);
-    context.moveTo(iconX + 6, iconY);
-    context.lineTo(iconX + 6, iconY + 7);
-    context.moveTo(iconX + 18, iconY);
-    context.lineTo(iconX + 18, iconY + 7);
-    context.moveTo(iconX + 7, iconY + 17);
-    context.lineTo(iconX + 8, iconY + 17);
-    context.moveTo(iconX + 15, iconY + 17);
-    context.lineTo(iconX + 16, iconY + 17);
-    context.stroke();
-  }
-  context.restore();
-
   context.fillStyle = "#6b7280";
   context.font = "700 22px Arial, Helvetica, sans-serif";
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
-  context.font = "800 32px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x + 68, y + 68, width - 68, 38, 1);
+  context.font = "800 34px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, value, x, y + 52, width, 38, 1);
 }
 
 function drawTicketBarcode(
@@ -620,7 +562,11 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
 
-  drawDestinationStamp(context, destination, 830, 385);
+  context.save();
+  context.translate(830, 350);
+  context.scale(0.78, 0.78);
+  drawDestinationStamp(context, destination, 0, 0);
+  context.restore();
 
   context.fillStyle = "#d92d25";
   context.beginPath();
@@ -638,24 +584,22 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.font = "400 32px Arial, Helvetica, sans-serif";
   wrapCanvasText(context, title, 110, 560, 760, 38, 1);
 
-  drawTicketField(context, "duration", "Duration", `${trip.days} days`, 110, 620, 210);
+  drawTicketField(context, "Duration", `${trip.days} days`, 110, 620, 190);
   drawTicketField(
     context,
-    "budget",
     "Budget",
     formatTicketBudget(trip.budget, destination),
-    340,
+    325,
     620,
-    240
+    250
   );
   drawTicketField(
     context,
-    "issued",
     "Issued",
     formatCreatedDate(trip.created_at),
-    610,
     620,
-    300
+    620,
+    310
   );
 
   context.fillStyle = "#6b7280";
@@ -860,7 +804,7 @@ function DestinationStampSvg({
     <svg
       viewBox="0 0 300 300"
       aria-hidden="true"
-      className="h-44 w-44 text-red-600 md:h-56 md:w-56"
+      className="h-36 w-36 text-red-600 md:h-44 md:w-44"
     >
       <defs>
         <path id="ticket-stamp-top" d="M 84 130 A 66 66 0 0 1 216 130" />
@@ -916,46 +860,6 @@ function DestinationStampSvg({
         </text>
       </g>
     </svg>
-  );
-}
-
-function TicketMetaIcon({ type }: { type: "duration" | "budget" | "issued" }) {
-  return (
-    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-100">
-      <svg
-        viewBox="0 0 32 32"
-        aria-hidden="true"
-        className="h-7 w-7 text-gray-950"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.5"
-      >
-        {type === "duration" && (
-          <>
-            <path d="M6 9h17v14H6z" />
-            <path d="M6 13h17M10 6v5M19 6v5" />
-            <circle cx="23" cy="23" r="5" />
-            <path d="M23 20v3l2 1" />
-          </>
-        )}
-        {type === "budget" && (
-          <>
-            <path d="M5 10h22v15H5z" />
-            <path d="M8 10l13-5 2 5" />
-            <path d="M22 18h3" />
-          </>
-        )}
-        {type === "issued" && (
-          <>
-            <path d="M6 9h20v17H6z" />
-            <path d="M6 14h20M11 6v5M21 6v5" />
-            <path d="M11 19h1M17 19h1M23 19h1M11 23h1M17 23h1" />
-          </>
-        )}
-      </svg>
-    </span>
   );
 }
 
@@ -1021,7 +925,7 @@ function TicketPreview({
           </div>
 
           <div className="relative flex-1 px-6 py-8 md:px-10">
-            <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+            <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_180px] md:items-start">
               <div>
                 <h1
                   className={`line-clamp-2 break-words font-black leading-[0.98] text-gray-950 ${destinationTitleClass}`}
@@ -1045,39 +949,30 @@ function TicketPreview({
               </div>
             </div>
 
-            <dl className="mt-10 grid gap-5 sm:grid-cols-3">
-              <div className="flex items-end gap-4">
-                <TicketMetaIcon type="duration" />
-                <div>
-                  <dt className="text-xs font-bold uppercase text-gray-500">
-                    Duration
-                  </dt>
-                  <dd className="mt-2 text-2xl font-black text-gray-950">
-                    {trip.days} days
-                  </dd>
-                </div>
+            <dl className="mt-10 grid gap-5 sm:grid-cols-[180px_240px_minmax(220px,1fr)]">
+              <div>
+                <dt className="text-xs font-bold uppercase text-gray-500">
+                  Duration
+                </dt>
+                <dd className="mt-2 whitespace-nowrap text-2xl font-black text-gray-950">
+                  {trip.days} days
+                </dd>
               </div>
-              <div className="flex items-end gap-4">
-                <TicketMetaIcon type="budget" />
-                <div>
-                  <dt className="text-xs font-bold uppercase text-gray-500">
-                    Budget
-                  </dt>
-                  <dd className="mt-2 text-2xl font-black text-gray-950">
-                    {formatTicketBudget(trip.budget, destination)}
-                  </dd>
-                </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-gray-500">
+                  Budget
+                </dt>
+                <dd className="mt-2 whitespace-nowrap text-2xl font-black text-gray-950">
+                  {formatTicketBudget(trip.budget, destination)}
+                </dd>
               </div>
-              <div className="flex items-end gap-4">
-                <TicketMetaIcon type="issued" />
-                <div>
-                  <dt className="text-xs font-bold uppercase text-gray-500">
-                    Issued
-                  </dt>
-                  <dd className="mt-2 text-xl font-black leading-tight text-gray-950">
-                    {formatCreatedDate(trip.created_at)}
-                  </dd>
-                </div>
+              <div>
+                <dt className="text-xs font-bold uppercase text-gray-500">
+                  Issued
+                </dt>
+                <dd className="mt-2 whitespace-nowrap text-xl font-black leading-tight text-gray-950">
+                  {formatCreatedDate(trip.created_at)}
+                </dd>
               </div>
             </dl>
           </div>

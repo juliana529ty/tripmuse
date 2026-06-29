@@ -362,77 +362,19 @@ function getTripTicketFileName(trip: Trip) {
 
 function drawTicketField(
   context: CanvasRenderingContext2D,
-  icon: "duration" | "budget" | "issued",
   label: string,
   value: string,
   x: number,
   y: number,
   width: number
 ) {
-  context.save();
-  context.fillStyle = "#f3f4f6";
-  context.strokeStyle = "#d1d5db";
-  context.lineWidth = 2;
-  context.beginPath();
-  context.roundRect(x, y + 28, 52, 52, 14);
-  context.fill();
-  context.stroke();
-
-  context.strokeStyle = "#030712";
-  context.lineWidth = 3;
-  context.lineCap = "round";
-  context.lineJoin = "round";
-
-  const iconX = x + 15;
-  const iconY = y + 43;
-
-  if (icon === "duration") {
-    context.strokeRect(iconX, iconY + 4, 24, 21);
-    context.beginPath();
-    context.moveTo(iconX, iconY + 11);
-    context.lineTo(iconX + 24, iconY + 11);
-    context.moveTo(iconX + 6, iconY);
-    context.lineTo(iconX + 6, iconY + 7);
-    context.moveTo(iconX + 18, iconY);
-    context.lineTo(iconX + 18, iconY + 7);
-    context.arc(iconX + 19, iconY + 22, 7, 0, Math.PI * 2);
-    context.moveTo(iconX + 19, iconY + 18);
-    context.lineTo(iconX + 19, iconY + 22);
-    context.lineTo(iconX + 23, iconY + 24);
-    context.stroke();
-  } else if (icon === "budget") {
-    context.strokeRect(iconX, iconY + 5, 26, 21);
-    context.beginPath();
-    context.moveTo(iconX + 4, iconY + 5);
-    context.lineTo(iconX + 20, iconY);
-    context.lineTo(iconX + 22, iconY + 5);
-    context.moveTo(iconX + 20, iconY + 16);
-    context.lineTo(iconX + 24, iconY + 16);
-    context.stroke();
-  } else {
-    context.strokeRect(iconX, iconY + 4, 24, 22);
-    context.beginPath();
-    context.moveTo(iconX, iconY + 11);
-    context.lineTo(iconX + 24, iconY + 11);
-    context.moveTo(iconX + 6, iconY);
-    context.lineTo(iconX + 6, iconY + 7);
-    context.moveTo(iconX + 18, iconY);
-    context.lineTo(iconX + 18, iconY + 7);
-    context.moveTo(iconX + 7, iconY + 17);
-    context.lineTo(iconX + 8, iconY + 17);
-    context.moveTo(iconX + 15, iconY + 17);
-    context.lineTo(iconX + 16, iconY + 17);
-    context.stroke();
-  }
-  context.restore();
-
   context.fillStyle = "#6b7280";
   context.font = "700 22px Arial, Helvetica, sans-serif";
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
-  context.font = "800 32px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x + 68, y + 68, width - 68, 38, 1);
+  context.font = "800 34px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, value, x, y + 52, width, 38, 1);
 }
 
 function drawTicketBarcode(
@@ -708,7 +650,11 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
 
-  drawDestinationStamp(context, destination, 830, 385);
+  context.save();
+  context.translate(830, 350);
+  context.scale(0.78, 0.78);
+  drawDestinationStamp(context, destination, 0, 0);
+  context.restore();
 
   context.fillStyle = "#d92d25";
   context.beginPath();
@@ -728,30 +674,27 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
 
   drawTicketField(
     context,
-    "duration",
     "Duration",
     `${trip.days} days`,
     110,
     620,
-    210
+    190
   );
   drawTicketField(
     context,
-    "budget",
     "Budget",
     formatTicketBudget(trip.budget, destination),
-    340,
+    325,
     620,
-    240
+    250
   );
   drawTicketField(
     context,
-    "issued",
     "Issued",
     formatCreatedDate(trip.created_at),
-    610,
     620,
-    300
+    620,
+    310
   );
 
   context.fillStyle = "#6b7280";
