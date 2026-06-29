@@ -42,6 +42,97 @@ function formatBudget(value: string | number | null | undefined) {
   return String(value);
 }
 
+function getTicketCurrency(destination: string) {
+  const text = destination.toLowerCase();
+
+  if (/(japan|tokyo|osaka|kyoto|sapporo|okinawa)/i.test(text)) return "JPY";
+  if (/(paris|france|rome|italy|spain|barcelona|madrid|germany|berlin|europe)/i.test(text)) return "EUR";
+  if (/(london|uk|united kingdom|england|scotland)/i.test(text)) return "GBP";
+  if (/(canada|toronto|vancouver|montreal)/i.test(text)) return "CAD";
+  if (/(australia|sydney|melbourne)/i.test(text)) return "AUD";
+
+  return "USD";
+}
+
+function formatTicketBudget(
+  value: string | number | null | undefined,
+  destination: string
+) {
+  const currency = getTicketCurrency(destination);
+  const fallback = `${currency} Flexible`;
+
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  const rawValue = String(value).trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  if (/^[A-Z]{3}\s/i.test(rawValue)) {
+    return rawValue;
+  }
+
+  const numericValue = Number(rawValue.replace(/[^0-9.-]/g, ""));
+
+  if (Number.isFinite(numericValue) && rawValue.match(/\d/)) {
+    return `${currency} ${Math.round(numericValue).toLocaleString("en-US")}`;
+  }
+
+  return `${currency} ${rawValue}`;
+}
+
+function getTicketStampLabel(destination: string) {
+  const text = destination.toLowerCase();
+  const knownLabels: Array<[RegExp, string]> = [
+    [/universal|osaka/, "OSAKA"],
+    [/tokyo/, "TOKYO"],
+    [/kyoto/, "KYOTO"],
+    [/paris/, "PARIS"],
+    [/new york|nyc/, "NEW YORK"],
+    [/london/, "LONDON"],
+    [/rome/, "ROME"],
+    [/seoul/, "SEOUL"],
+    [/singapore/, "SINGAPORE"],
+  ];
+
+  const match = knownLabels.find(([pattern]) => pattern.test(text));
+
+  if (match) {
+    return match[1];
+  }
+
+  return destination
+    .split(/[\s,/-]+/)
+    .find((part) => part.length > 2)
+    ?.slice(0, 10)
+    .toUpperCase() || "TRIP";
+}
+
+function getTicketStampParts(destination: string) {
+  const text = destination.toLowerCase();
+  const location = getTicketStampLabel(destination);
+
+  if (/(japan|tokyo|osaka|kyoto|sapporo|okinawa|universal)/i.test(text)) {
+    return { location, country: "JAPAN · JP" };
+  }
+
+  if (/(paris|france)/i.test(text)) return { location, country: "FRANCE · FR" };
+  if (/(london|uk|united kingdom|england|scotland)/i.test(text)) {
+    return { location, country: "UNITED KINGDOM · GB" };
+  }
+  if (/(new york|nyc|usa|united states)/i.test(text)) {
+    return { location, country: "UNITED STATES · US" };
+  }
+  if (/(rome|italy)/i.test(text)) return { location, country: "ITALY · IT" };
+  if (/(seoul|korea)/i.test(text)) return { location, country: "KOREA · KR" };
+  if (/singapore/i.test(text)) return { location, country: "SINGAPORE · SG" };
+
+  return { location, country: "TRAVEL PASS · TM" };
+}
+
 function downloadBlob(blob: Blob, fileName: string) {
   const imageUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -94,6 +185,76 @@ function wrapCanvasText(
   });
 }
 
+function getCanvasTextLines(
+  context: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number
+) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (context.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines.slice(0, maxLines).map((line, index) =>
+    index === maxLines - 1 && lines.length > maxLines
+      ? `${line.replace(/[.,;:!?]+$/, "")}...`
+      : line
+  );
+}
+
+function drawFittedCanvasText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxLines: number,
+  maxFontSize: number,
+  minFontSize: number,
+  weight = 900
+) {
+  let fontSize = maxFontSize;
+  let lines: string[] = [];
+
+  while (fontSize >= minFontSize) {
+    context.font = `${weight} ${fontSize}px Arial, Helvetica, sans-serif`;
+    lines = getCanvasTextLines(context, text, maxWidth, maxLines);
+
+    if (
+      lines.length <= maxLines &&
+      lines.every((line) => context.measureText(line).width <= maxWidth)
+    ) {
+      break;
+    }
+
+    fontSize -= 4;
+  }
+
+  const lineHeight = Math.round(fontSize * 1.05);
+  lines.forEach((line, index) => {
+    context.fillText(line, x, y + index * lineHeight);
+  });
+}
+
 function createTicketCode(trip: Trip) {
   return `TM-${trip.id.slice(0, 4).toUpperCase()}-${trip.id
     .slice(-4)
@@ -120,19 +281,77 @@ function getTripPdfFileName(trip: Trip) {
 
 function drawTicketField(
   context: CanvasRenderingContext2D,
+  icon: "duration" | "budget" | "issued",
   label: string,
   value: string,
   x: number,
   y: number,
   width: number
 ) {
+  context.save();
+  context.fillStyle = "#f3f4f6";
+  context.strokeStyle = "#d1d5db";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.roundRect(x, y + 28, 52, 52, 14);
+  context.fill();
+  context.stroke();
+
+  context.strokeStyle = "#030712";
+  context.lineWidth = 3;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  const iconX = x + 15;
+  const iconY = y + 43;
+
+  if (icon === "duration") {
+    context.strokeRect(iconX, iconY + 4, 24, 21);
+    context.beginPath();
+    context.moveTo(iconX, iconY + 11);
+    context.lineTo(iconX + 24, iconY + 11);
+    context.moveTo(iconX + 6, iconY);
+    context.lineTo(iconX + 6, iconY + 7);
+    context.moveTo(iconX + 18, iconY);
+    context.lineTo(iconX + 18, iconY + 7);
+    context.arc(iconX + 19, iconY + 22, 7, 0, Math.PI * 2);
+    context.moveTo(iconX + 19, iconY + 18);
+    context.lineTo(iconX + 19, iconY + 22);
+    context.lineTo(iconX + 23, iconY + 24);
+    context.stroke();
+  } else if (icon === "budget") {
+    context.strokeRect(iconX, iconY + 5, 26, 21);
+    context.beginPath();
+    context.moveTo(iconX + 4, iconY + 5);
+    context.lineTo(iconX + 20, iconY);
+    context.lineTo(iconX + 22, iconY + 5);
+    context.moveTo(iconX + 20, iconY + 16);
+    context.lineTo(iconX + 24, iconY + 16);
+    context.stroke();
+  } else {
+    context.strokeRect(iconX, iconY + 4, 24, 22);
+    context.beginPath();
+    context.moveTo(iconX, iconY + 11);
+    context.lineTo(iconX + 24, iconY + 11);
+    context.moveTo(iconX + 6, iconY);
+    context.lineTo(iconX + 6, iconY + 7);
+    context.moveTo(iconX + 18, iconY);
+    context.lineTo(iconX + 18, iconY + 7);
+    context.moveTo(iconX + 7, iconY + 17);
+    context.lineTo(iconX + 8, iconY + 17);
+    context.moveTo(iconX + 15, iconY + 17);
+    context.lineTo(iconX + 16, iconY + 17);
+    context.stroke();
+  }
+  context.restore();
+
   context.fillStyle = "#6b7280";
   context.font = "700 22px Arial, Helvetica, sans-serif";
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
   context.font = "800 32px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x, y + 46, width, 38, 1);
+  wrapCanvasText(context, value, x + 68, y + 68, width - 68, 38, 1);
 }
 
 function drawTicketBarcode(
@@ -145,12 +364,208 @@ function drawTicketBarcode(
 
   context.fillStyle = "#030712";
   code.split("").forEach((char, index) => {
+    if (char === "-") {
+      x += 8;
+      return;
+    }
+
     const width = 4 + ((char.charCodeAt(0) + index) % 5) * 3;
-    const height = 82 + ((char.charCodeAt(0) + index) % 4) * 10;
+    const height = 92 + ((char.charCodeAt(0) + index) % 4) * 12;
 
     context.fillRect(x, baselineY - height, width, height);
-    x += width + 6;
+    x += width + 7;
   });
+}
+
+function drawArcText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  centerY: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+  mode: "top" | "bottom"
+) {
+  const chars = text.split("");
+  const total = Math.max(chars.length - 1, 1);
+
+  chars.forEach((char, index) => {
+    const angle = startAngle + ((endAngle - startAngle) * index) / total;
+    const radians = (angle * Math.PI) / 180;
+    const x = centerX + Math.cos(radians) * radius;
+    const y = centerY + Math.sin(radians) * radius;
+
+    context.save();
+    context.translate(x, y);
+    context.rotate(((mode === "top" ? angle + 90 : angle - 90) * Math.PI) / 180);
+    context.fillText(char, 0, 0);
+    context.restore();
+  });
+}
+
+function drawDestinationStamp(
+  context: CanvasRenderingContext2D,
+  destination: string,
+  centerX: number,
+  centerY: number
+) {
+  const accentColor = "#d92d25";
+  const stampParts = getTicketStampParts(destination);
+  const topArcSpan = Math.min(96, Math.max(56, stampParts.location.length * 9));
+  const bottomArcSpan = Math.min(130, Math.max(86, stampParts.country.length * 7));
+
+  context.save();
+  context.strokeStyle = accentColor;
+  context.fillStyle = accentColor;
+  context.lineWidth = 3;
+
+  [132, 118, 78].forEach((radius, index) => {
+    context.lineWidth = index === 0 ? 3 : 2;
+    context.beginPath();
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    context.stroke();
+  });
+
+  context.lineWidth = 2;
+  [...Array(4)].forEach((_, groupIndex) => {
+    const start = [25, 120, 205, 300][groupIndex];
+
+    for (let angle = start; angle <= start + 36; angle += 12) {
+      const radians = (angle * Math.PI) / 180;
+      context.beginPath();
+      context.moveTo(
+        centerX + Math.cos(radians) * 104,
+        centerY + Math.sin(radians) * 104
+      );
+      context.lineTo(
+        centerX + Math.cos(radians) * 116,
+        centerY + Math.sin(radians) * 116
+      );
+      context.stroke();
+    }
+  });
+
+  context.font = "800 25px Arial, Helvetica, sans-serif";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  drawArcText(
+    context,
+    stampParts.location,
+    centerX,
+    centerY,
+    104,
+    270 - topArcSpan / 2,
+    270 + topArcSpan / 2,
+    "top"
+  );
+
+  context.font = "800 18px Arial, Helvetica, sans-serif";
+  drawArcText(
+    context,
+    stampParts.country,
+    centerX,
+    centerY,
+    104,
+    90 + bottomArcSpan / 2,
+    90 - bottomArcSpan / 2,
+    "bottom"
+  );
+
+  context.font = "800 22px Arial, Helvetica, sans-serif";
+  context.fillText("JOURNEY", centerX, centerY + 78);
+
+  [-36, 36].forEach((offsetX) => {
+    context.beginPath();
+    context.moveTo(centerX + offsetX, centerY - 72);
+    context.lineTo(centerX + offsetX + 5, centerY - 60);
+    context.lineTo(centerX + offsetX + 18, centerY - 56);
+    context.lineTo(centerX + offsetX + 5, centerY - 52);
+    context.lineTo(centerX + offsetX, centerY - 40);
+    context.lineTo(centerX + offsetX - 5, centerY - 52);
+    context.lineTo(centerX + offsetX - 18, centerY - 56);
+    context.lineTo(centerX + offsetX - 5, centerY - 60);
+    context.closePath();
+    context.stroke();
+  });
+
+  context.lineWidth = 3;
+  context.strokeRect(centerX - 42, centerY + 2, 84, 46);
+  context.beginPath();
+  context.arc(centerX, centerY + 2, 42, Math.PI, Math.PI * 2);
+  context.stroke();
+
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(centerX - 24, centerY + 48);
+  context.lineTo(centerX - 24, centerY + 18);
+  context.moveTo(centerX + 24, centerY + 48);
+  context.lineTo(centerX + 24, centerY + 18);
+  context.stroke();
+
+  context.lineWidth = 3;
+  context.beginPath();
+  context.arc(centerX, centerY - 38, 30, 0, Math.PI * 2);
+  context.stroke();
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(centerX - 30, centerY - 38);
+  context.lineTo(centerX + 30, centerY - 38);
+  context.moveTo(centerX, centerY - 68);
+  context.quadraticCurveTo(centerX - 16, centerY - 38, centerX, centerY - 8);
+  context.moveTo(centerX, centerY - 68);
+  context.quadraticCurveTo(centerX + 16, centerY - 38, centerX, centerY - 8);
+  context.stroke();
+
+  context.lineWidth = 3;
+  context.beginPath();
+  context.moveTo(centerX - 98, centerY + 58);
+  context.bezierCurveTo(
+    centerX - 62,
+    centerY + 10,
+    centerX - 24,
+    centerY + 78,
+    centerX + 16,
+    centerY + 28
+  );
+  context.bezierCurveTo(
+    centerX + 40,
+    centerY - 2,
+    centerX + 70,
+    centerY - 2,
+    centerX + 96,
+    centerY + 34
+  );
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(centerX - 88, centerY + 58);
+  context.lineTo(centerX - 80, centerY + 38);
+  context.moveTo(centerX - 58, centerY + 30);
+  context.lineTo(centerX - 49, centerY + 54);
+  context.moveTo(centerX + 74, centerY + 16);
+  context.lineTo(centerX + 65, centerY + 46);
+  context.stroke();
+
+  for (let index = 0; index < 4; index += 1) {
+    context.beginPath();
+    const y = centerY + 68 + index * 21;
+
+    for (let t = 0; t < 190; t += 4) {
+      const x = centerX - 232 + t;
+      const waveY = y + Math.sin(t / 18) * 8;
+
+      if (t === 0) {
+        context.moveTo(x, waveY);
+      } else {
+        context.lineTo(x, waveY);
+      }
+    }
+
+    context.stroke();
+  }
+
+  context.restore();
 }
 
 async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
@@ -202,25 +617,44 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.stroke();
   context.setLineDash([]);
 
-  context.fillStyle = "#f9fafb";
-  context.fillRect(78, 188, 858, 456);
-
   context.fillStyle = "#030712";
-  context.font = "900 78px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, destination, 106, 286, 760, 82, 2);
+  drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
+
+  drawDestinationStamp(context, destination, 830, 385);
+
+  context.fillStyle = "#d92d25";
+  context.beginPath();
+  context.arc(106, 500, 7, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = "#cfd4dc";
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(140, 500);
+  context.lineTo(676, 500);
+  context.stroke();
 
   context.fillStyle = "#4b5563";
-  context.font = "400 26px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, title, 110, 420, 760, 34, 3);
+  context.font = "400 32px Arial, Helvetica, sans-serif";
+  wrapCanvasText(context, title, 110, 560, 760, 38, 1);
 
-  drawTicketField(context, "Duration", `${trip.days} days`, 110, 570, 210);
-  drawTicketField(context, "Budget", formatBudget(trip.budget), 340, 570, 220);
+  drawTicketField(context, "duration", "Duration", `${trip.days} days`, 110, 620, 210);
   drawTicketField(
     context,
+    "budget",
+    "Budget",
+    formatTicketBudget(trip.budget, destination),
+    340,
+    620,
+    240
+  );
+  drawTicketField(
+    context,
+    "issued",
     "Issued",
     formatCreatedDate(trip.created_at),
     610,
-    570,
+    620,
     300
   );
 
@@ -231,19 +665,19 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   context.font = "700 22px Arial, Helvetica, sans-serif";
   highlights.forEach((highlight, index) => {
-    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 54, 280, 28, 1);
+    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 70, 280, 28, 2);
   });
 
-  drawTicketBarcode(context, ticketCode, 1030, 544);
+  drawTicketBarcode(context, ticketCode, 1030, 560);
 
   context.fillStyle = "#030712";
-  context.font = "800 28px Arial, Helvetica, sans-serif";
-  context.fillText(ticketCode, 1030, 604);
+  context.font = "800 31px Arial, Helvetica, sans-serif";
+  context.fillText(ticketCode, 1030, 660);
 
   context.fillStyle = "#6b7280";
-  context.font = "600 19px Arial, Helvetica, sans-serif";
-  context.fillText("KEEP THIS PASS FOR YOUR TRIP", 1030, 644);
-  context.fillText("tripmuse.ai", 1030, 674);
+  context.font = "400 22px Arial, Helvetica, sans-serif";
+  context.fillText("TRIP PASS ID", 1030, 616);
+  context.fillText("Made with TripMuse", 1030, 692);
 
   context.fillStyle = "#f3f4f6";
   context.beginPath();
@@ -415,6 +849,139 @@ function saveSharedTripPdf(
   });
 }
 
+function DestinationStampSvg({
+  country,
+  location,
+}: {
+  country: string;
+  location: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 300 300"
+      aria-hidden="true"
+      className="h-44 w-44 text-red-600 md:h-56 md:w-56"
+    >
+      <defs>
+        <path id="ticket-stamp-top" d="M 84 130 A 66 66 0 0 1 216 130" />
+        <path id="ticket-stamp-bottom" d="M 224 171 A 76 76 0 0 1 76 171" />
+      </defs>
+      <g fill="none" stroke="currentColor" strokeLinecap="round">
+        <circle cx="150" cy="150" r="118" strokeWidth="3" />
+        <circle cx="150" cy="150" r="105" strokeWidth="2" />
+        <circle cx="150" cy="150" r="70" strokeWidth="2" />
+        {[34, 46, 58, 124, 136, 148, 214, 226, 238, 304, 316, 328].map((angle) => {
+          const radians = (angle * Math.PI) / 180;
+          const x1 = 150 + Math.cos(radians) * 94;
+          const y1 = 150 + Math.sin(radians) * 94;
+          const x2 = 150 + Math.cos(radians) * 105;
+          const y2 = 150 + Math.sin(radians) * 105;
+
+          return (
+            <line
+              key={angle}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              strokeWidth="2"
+            />
+          );
+        })}
+        <path d="M108 151h84v46h-84z" strokeWidth="3" />
+        <path d="M108 151a42 42 0 0 1 84 0" strokeWidth="3" />
+        <path d="M126 197v-30M174 197v-30" strokeWidth="2" />
+        <circle cx="150" cy="115" r="28" strokeWidth="3" />
+        <path d="M122 115h56M150 87c-15 20-15 36 0 56M150 87c15 20 15 36 0 56" strokeWidth="2" />
+        <path d="M53 205c33-49 74 21 112-27 25-32 55-21 82 16" strokeWidth="3" />
+        <path d="M62 205v-19M91 190v-20M205 186v-22M232 198v-23" strokeWidth="2" />
+        <path d="M112 70l5 12 13 4-13 4-5 12-5-12-13-4 13-4zM202 76l4 9 10 3-10 3-4 9-4-9-10-3 10-3z" strokeWidth="2" />
+        <path d="M-6 213c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
+        <path d="M-6 232c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
+        <path d="M-6 251c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
+      </g>
+      <g fill="currentColor" fontFamily="Arial, Helvetica, sans-serif" fontWeight="800">
+        <text fontSize="22">
+          <textPath href="#ticket-stamp-top" startOffset="50%" textAnchor="middle">
+            {location}
+          </textPath>
+        </text>
+        <text fontSize="16">
+          <textPath href="#ticket-stamp-bottom" startOffset="50%" textAnchor="middle">
+            {country}
+          </textPath>
+        </text>
+        <text x="150" y="232" textAnchor="middle" fontSize="18">
+          JOURNEY
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+function TicketMetaIcon({ type }: { type: "duration" | "budget" | "issued" }) {
+  return (
+    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-100">
+      <svg
+        viewBox="0 0 32 32"
+        aria-hidden="true"
+        className="h-7 w-7 text-gray-950"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.5"
+      >
+        {type === "duration" && (
+          <>
+            <path d="M6 9h17v14H6z" />
+            <path d="M6 13h17M10 6v5M19 6v5" />
+            <circle cx="23" cy="23" r="5" />
+            <path d="M23 20v3l2 1" />
+          </>
+        )}
+        {type === "budget" && (
+          <>
+            <path d="M5 10h22v15H5z" />
+            <path d="M8 10l13-5 2 5" />
+            <path d="M22 18h3" />
+          </>
+        )}
+        {type === "issued" && (
+          <>
+            <path d="M6 9h20v17H6z" />
+            <path d="M6 14h20M11 6v5M21 6v5" />
+            <path d="M11 19h1M17 19h1M23 19h1M11 23h1M17 23h1" />
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
+
+function TicketBarcode({ code }: { code: string }) {
+  return (
+    <div className="flex h-24 items-end gap-[5px] overflow-hidden">
+      {code.split("").map((char, index) => {
+        if (char === "-") {
+          return <span key={`${char}-${index}`} className="w-2 shrink-0" />;
+        }
+
+        return (
+          <span
+            key={`${char}-${index}`}
+            className="block shrink-0 bg-gray-950"
+            style={{
+              height: `${58 + ((char.charCodeAt(0) + index) % 4) * 10}px`,
+              width: `${3 + ((char.charCodeAt(0) + index) % 5) * 2}px`,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function TicketPreview({
   trip,
   exportData,
@@ -422,90 +989,123 @@ function TicketPreview({
   trip: Trip;
   exportData: TripExportData;
 }) {
+  const destination = exportData.destination || trip.destination || "Your Trip";
   const highlights =
     exportData.highlights.length > 0
       ? exportData.highlights.slice(0, 3)
       : ["AI itinerary", "Travel tips", "Budget guidance"];
+  const ticketCode = createTicketCode(trip);
+  const stampParts = getTicketStampParts(destination);
+  const destinationLength = destination.length;
+  const destinationTitleClass =
+    destinationLength > 30
+      ? "text-4xl md:text-5xl"
+      : destinationLength > 18
+        ? "text-5xl md:text-6xl"
+        : "text-5xl md:text-7xl";
 
   return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl shadow-gray-200/60">
-      <div className="flex items-center justify-between bg-gray-950 px-6 py-5 text-white md:px-10">
-        <p className="text-xl font-black tracking-tight md:text-3xl">
-          TRIPMUSE TICKET
-        </p>
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/55 md:text-sm">
-          AI Travel Pass
-        </p>
-      </div>
+    <section className="relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl shadow-gray-200/60">
+      <div className="pointer-events-none absolute left-[72%] top-0 z-10 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gray-50 shadow-inner" />
+      <div className="pointer-events-none absolute bottom-0 left-[72%] z-10 h-11 w-11 -translate-x-1/2 translate-y-1/2 rounded-full bg-gray-50 shadow-inner" />
 
-      <div className="grid gap-0 lg:grid-cols-[1fr_360px]">
-        <div className="bg-gray-50 p-6 md:p-10">
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">
-            Destination
-          </p>
-          <h1 className="mt-3 break-words text-5xl font-black text-gray-950 md:text-7xl">
-            {exportData.destination || trip.destination}
-          </h1>
-          <p className="mt-8 max-w-3xl text-base leading-7 text-gray-600">
-            {exportData.title}
-          </p>
+      <div className="grid min-h-[430px] lg:grid-cols-[1fr_360px]">
+        <div className="flex flex-col">
+          <div className="flex items-center justify-between bg-gray-950 px-6 py-5 text-white md:px-10">
+            <div className="flex items-center gap-4">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-black text-gray-950">
+                TM
+              </span>
+              <p className="text-xl font-black md:text-3xl">TRIPMUSE TICKET</p>
+            </div>
+          </div>
 
-          <dl className="mt-10 grid gap-4 sm:grid-cols-3">
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                Duration
-              </dt>
-              <dd className="mt-2 text-2xl font-black text-gray-950">
-                {trip.days} days
-              </dd>
+          <div className="relative flex-1 px-6 py-8 md:px-10">
+            <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+              <div>
+                <h1
+                  className={`line-clamp-2 break-words font-black leading-[0.98] text-gray-950 ${destinationTitleClass}`}
+                >
+                  {destination}
+                </h1>
+                <div className="mt-8 flex items-center gap-4">
+                  <span className="h-3 w-3 rounded-full bg-red-600" />
+                  <span className="h-px flex-1 bg-gray-300" />
+                </div>
+                <p className="mt-7 line-clamp-2 text-xl leading-8 text-gray-600">
+                  {exportData.title}
+                </p>
+              </div>
+
+              <div className="hidden justify-self-end md:block">
+                <DestinationStampSvg
+                  country={stampParts.country}
+                  location={stampParts.location}
+                />
+              </div>
             </div>
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                Budget
-              </dt>
-              <dd className="mt-2 text-2xl font-black text-gray-950">
-                {formatBudget(trip.budget)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.18em] text-gray-500">
-                Issued
-              </dt>
-              <dd className="mt-2 text-xl font-black text-gray-950">
-                {formatCreatedDate(trip.created_at)}
-              </dd>
-            </div>
-          </dl>
+
+            <dl className="mt-10 grid gap-5 sm:grid-cols-3">
+              <div className="flex items-end gap-4">
+                <TicketMetaIcon type="duration" />
+                <div>
+                  <dt className="text-xs font-bold uppercase text-gray-500">
+                    Duration
+                  </dt>
+                  <dd className="mt-2 text-2xl font-black text-gray-950">
+                    {trip.days} days
+                  </dd>
+                </div>
+              </div>
+              <div className="flex items-end gap-4">
+                <TicketMetaIcon type="budget" />
+                <div>
+                  <dt className="text-xs font-bold uppercase text-gray-500">
+                    Budget
+                  </dt>
+                  <dd className="mt-2 text-2xl font-black text-gray-950">
+                    {formatTicketBudget(trip.budget, destination)}
+                  </dd>
+                </div>
+              </div>
+              <div className="flex items-end gap-4">
+                <TicketMetaIcon type="issued" />
+                <div>
+                  <dt className="text-xs font-bold uppercase text-gray-500">
+                    Issued
+                  </dt>
+                  <dd className="mt-2 text-xl font-black leading-tight text-gray-950">
+                    {formatCreatedDate(trip.created_at)}
+                  </dd>
+                </div>
+              </div>
+            </dl>
+          </div>
         </div>
 
-        <aside className="border-t border-dashed border-gray-300 p-6 lg:border-l lg:border-t-0 md:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-gray-500">
+        <aside className="border-t border-dashed border-gray-300 bg-white px-6 py-8 lg:border-l lg:border-t-0 md:px-8">
+          <p className="mt-1 text-sm font-bold uppercase text-gray-500">
+            AI Travel Pass
+          </p>
+          <p className="mt-12 text-sm font-bold uppercase text-gray-500">
             Highlights
           </p>
-          <ul className="mt-5 space-y-3 text-sm font-bold leading-6 text-gray-950">
+          <ul className="mt-5 space-y-4 text-lg font-bold leading-6 text-gray-950">
             {highlights.map((highlight) => (
-              <li key={highlight}>- {highlight}</li>
+              <li key={highlight} className="line-clamp-2">
+                - {highlight}
+              </li>
             ))}
           </ul>
 
-          <div className="mt-10 flex h-24 items-end gap-1">
-            {createTicketCode(trip).split("").map((char, index) => (
-              <span
-                key={`${char}-${index}`}
-                className="block bg-gray-950"
-                style={{
-                  height: `${36 + ((char.charCodeAt(0) + index) % 5) * 10}px`,
-                  width: `${3 + ((char.charCodeAt(0) + index) % 4) * 3}px`,
-                }}
-              />
-            ))}
+          <div className="mt-9">
+            <TicketBarcode code={ticketCode} />
           </div>
 
-          <p className="mt-6 text-2xl font-black text-gray-950">
-            {createTicketCode(trip)}
-          </p>
-          <p className="mt-3 text-xs font-bold uppercase tracking-[0.16em] text-gray-500">
-            Keep this pass for your trip
+          <p className="mt-5 text-sm text-gray-500">TRIP PASS ID</p>
+          <p className="mt-2 text-2xl font-black text-gray-950">{ticketCode}</p>
+          <p className="mt-5 text-base font-semibold text-gray-500">
+            Made with TripMuse
           </p>
         </aside>
       </div>
