@@ -87,6 +87,19 @@ function formatTicketBudget(
   return `${currency} ${rawValue}`;
 }
 
+function formatTicketSubtitle(title: string, destination: string) {
+  const cleanedTitle = title
+    .replace(/\s+on\s+a\s+[$A-Z]{0,4}\s*[\d,]+(?:\.\d+)?\s+budget\b/i, "")
+    .replace(/\s+on\s+an?\s+[\d,]+(?:\.\d+)?\s+budget\b/i, "")
+    .trim();
+
+  if (/new york|nyc/i.test(destination)) {
+    return cleanedTitle.replace(/\bNew York Adventure\b/i, "New York City Adventure");
+  }
+
+  return cleanedTitle;
+}
+
 function downloadBlob(blob: Blob, fileName: string) {
   const imageUrl = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -453,7 +466,10 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   }
 
   const destination = exportData.destination || trip.destination || "Your Trip";
-  const title = exportData.title || "A personalized AI itinerary by TripMuse.";
+  const title = formatTicketSubtitle(
+    exportData.title || "A personalized AI itinerary by TripMuse.",
+    destination
+  );
   const highlights =
     exportData.highlights.length > 0
       ? exportData.highlights.slice(0, 3)
@@ -556,7 +572,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#6b7280";
   context.font = "400 22px Arial, Helvetica, sans-serif";
   context.fillText("TRIP PASS ID", 1030, 596);
-  context.fillText("Made with TripMuse", 1030, 680);
+  context.fillText("Made with TripMuse", 1030, 666);
 
   context.fillStyle = "#f3f4f6";
   context.beginPath();
