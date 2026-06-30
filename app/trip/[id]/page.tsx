@@ -325,8 +325,43 @@ function drawTicketField(
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
-  context.font = "800 34px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x, y + 52, width, 38, 1);
+  drawFittedSingleLine(context, value, x, y + 52, width, 34, 24);
+}
+
+function drawFittedSingleLine(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxFontSize: number,
+  minFontSize: number,
+  weight = 800
+) {
+  let fontSize = maxFontSize;
+  let displayText = text;
+
+  while (fontSize >= minFontSize) {
+    context.font = `${weight} ${fontSize}px Arial, Helvetica, sans-serif`;
+
+    if (context.measureText(displayText).width <= maxWidth) {
+      context.fillText(displayText, x, y);
+      return;
+    }
+
+    fontSize -= 2;
+  }
+
+  context.font = `${weight} ${minFontSize}px Arial, Helvetica, sans-serif`;
+
+  while (
+    displayText.length > 1 &&
+    context.measureText(`${displayText.slice(0, -1)}...`).width > maxWidth
+  ) {
+    displayText = displayText.slice(0, -1);
+  }
+
+  context.fillText(`${displayText.slice(0, -1)}...`, x, y);
 }
 
 function drawTicketBarcode(
@@ -345,7 +380,7 @@ function drawTicketBarcode(
     }
 
     const width = 4 + ((char.charCodeAt(0) + index) % 5) * 3;
-    const height = 92 + ((char.charCodeAt(0) + index) % 4) * 12;
+    const height = 74 + ((char.charCodeAt(0) + index) % 4) * 8;
 
     context.fillRect(x, baselineY - height, width, height);
     x += width + 7;
@@ -459,7 +494,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
 
-  drawContainedImage(context, stampImage, 690, 230, 270, 210);
+  drawContainedImage(context, stampImage, 650, 210, 310, 220);
 
   context.fillStyle = "#d92d25";
   context.beginPath();
@@ -475,14 +510,14 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
 
   context.fillStyle = "#4b5563";
   context.font = "400 32px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, title, 110, 560, 760, 38, 1);
+  wrapCanvasText(context, title, 110, 545, 760, 36, 1);
 
   drawTicketField(
     context,
     "Duration",
     `${trip.days} days`,
     110,
-    620,
+    595,
     190
   );
   drawTicketField(
@@ -490,7 +525,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
     "Budget",
     formatTicketBudget(trip.budget, destination),
     325,
-    620,
+    595,
     250
   );
   drawTicketField(
@@ -498,7 +533,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
     "Issued",
     formatCreatedDate(trip.created_at),
     620,
-    620,
+    595,
     310
   );
 
@@ -507,21 +542,21 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillText("HIGHLIGHTS", 1030, 218);
 
   context.fillStyle = "#030712";
-  context.font = "700 22px Arial, Helvetica, sans-serif";
+  context.font = "700 20px Arial, Helvetica, sans-serif";
   highlights.forEach((highlight, index) => {
-    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 70, 280, 28, 2);
+    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 62, 280, 25, 2);
   });
 
-  drawTicketBarcode(context, ticketCode, 1030, 560);
+  drawTicketBarcode(context, ticketCode, 1030, 545);
 
   context.fillStyle = "#030712";
   context.font = "800 31px Arial, Helvetica, sans-serif";
-  context.fillText(ticketCode, 1030, 660);
+  context.fillText(ticketCode, 1030, 640);
 
   context.fillStyle = "#6b7280";
   context.font = "400 22px Arial, Helvetica, sans-serif";
-  context.fillText("TRIP PASS ID", 1030, 616);
-  context.fillText("Made with TripMuse", 1030, 692);
+  context.fillText("TRIP PASS ID", 1030, 596);
+  context.fillText("Made with TripMuse", 1030, 680);
 
   context.fillStyle = "#f3f4f6";
   context.beginPath();

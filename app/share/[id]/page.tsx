@@ -244,8 +244,43 @@ function drawTicketField(
   context.fillText(label.toUpperCase(), x, y);
 
   context.fillStyle = "#030712";
-  context.font = "800 34px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, value, x, y + 52, width, 38, 1);
+  drawFittedSingleLine(context, value, x, y + 52, width, 34, 24);
+}
+
+function drawFittedSingleLine(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxFontSize: number,
+  minFontSize: number,
+  weight = 800
+) {
+  let fontSize = maxFontSize;
+  let displayText = text;
+
+  while (fontSize >= minFontSize) {
+    context.font = `${weight} ${fontSize}px Arial, Helvetica, sans-serif`;
+
+    if (context.measureText(displayText).width <= maxWidth) {
+      context.fillText(displayText, x, y);
+      return;
+    }
+
+    fontSize -= 2;
+  }
+
+  context.font = `${weight} ${minFontSize}px Arial, Helvetica, sans-serif`;
+
+  while (
+    displayText.length > 1 &&
+    context.measureText(`${displayText.slice(0, -1)}...`).width > maxWidth
+  ) {
+    displayText = displayText.slice(0, -1);
+  }
+
+  context.fillText(`${displayText.slice(0, -1)}...`, x, y);
 }
 
 function drawTicketBarcode(
@@ -264,7 +299,7 @@ function drawTicketBarcode(
     }
 
     const width = 4 + ((char.charCodeAt(0) + index) % 5) * 3;
-    const height = 92 + ((char.charCodeAt(0) + index) % 4) * 12;
+    const height = 74 + ((char.charCodeAt(0) + index) % 4) * 8;
 
     context.fillRect(x, baselineY - height, width, height);
     x += width + 7;
@@ -372,7 +407,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
 
-  drawContainedImage(context, stampImage, 690, 230, 270, 210);
+  drawContainedImage(context, stampImage, 650, 210, 310, 220);
 
   context.fillStyle = "#d92d25";
   context.beginPath();
@@ -388,15 +423,15 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
 
   context.fillStyle = "#4b5563";
   context.font = "400 32px Arial, Helvetica, sans-serif";
-  wrapCanvasText(context, title, 110, 560, 760, 38, 1);
+  wrapCanvasText(context, title, 110, 545, 760, 36, 1);
 
-  drawTicketField(context, "Duration", `${trip.days} days`, 110, 620, 190);
+  drawTicketField(context, "Duration", `${trip.days} days`, 110, 595, 190);
   drawTicketField(
     context,
     "Budget",
     formatTicketBudget(trip.budget, destination),
     325,
-    620,
+    595,
     250
   );
   drawTicketField(
@@ -404,7 +439,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
     "Issued",
     formatCreatedDate(trip.created_at),
     620,
-    620,
+    595,
     310
   );
 
@@ -413,21 +448,21 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillText("HIGHLIGHTS", 1030, 218);
 
   context.fillStyle = "#030712";
-  context.font = "700 22px Arial, Helvetica, sans-serif";
+  context.font = "700 20px Arial, Helvetica, sans-serif";
   highlights.forEach((highlight, index) => {
-    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 70, 280, 28, 2);
+    wrapCanvasText(context, `- ${highlight}`, 1030, 264 + index * 62, 280, 25, 2);
   });
 
-  drawTicketBarcode(context, ticketCode, 1030, 560);
+  drawTicketBarcode(context, ticketCode, 1030, 545);
 
   context.fillStyle = "#030712";
   context.font = "800 31px Arial, Helvetica, sans-serif";
-  context.fillText(ticketCode, 1030, 660);
+  context.fillText(ticketCode, 1030, 640);
 
   context.fillStyle = "#6b7280";
   context.font = "400 22px Arial, Helvetica, sans-serif";
-  context.fillText("TRIP PASS ID", 1030, 616);
-  context.fillText("Made with TripMuse", 1030, 692);
+  context.fillText("TRIP PASS ID", 1030, 596);
+  context.fillText("Made with TripMuse", 1030, 680);
 
   context.fillStyle = "#f3f4f6";
   context.beginPath();
@@ -601,7 +636,7 @@ function saveSharedTripPdf(
 
 function TicketBarcode({ code }: { code: string }) {
   return (
-    <div className="flex h-24 items-end gap-[5px] overflow-hidden">
+    <div className="flex h-20 items-end gap-[5px] overflow-hidden">
       {code.split("").map((char, index) => {
         if (char === "-") {
           return <span key={`${char}-${index}`} className="w-2 shrink-0" />;
@@ -612,7 +647,7 @@ function TicketBarcode({ code }: { code: string }) {
             key={`${char}-${index}`}
             className="block shrink-0 bg-gray-950"
             style={{
-              height: `${58 + ((char.charCodeAt(0) + index) % 4) * 10}px`,
+              height: `${52 + ((char.charCodeAt(0) + index) % 4) * 8}px`,
               width: `${3 + ((char.charCodeAt(0) + index) % 5) * 2}px`,
             }}
           />
@@ -648,8 +683,8 @@ function TicketPreview({
       <div className="pointer-events-none absolute left-[72%] top-0 z-10 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gray-50 shadow-inner" />
       <div className="pointer-events-none absolute bottom-0 left-[72%] z-10 h-11 w-11 -translate-x-1/2 translate-y-1/2 rounded-full bg-gray-50 shadow-inner" />
 
-      <div className="grid min-h-[430px] lg:grid-cols-[1fr_360px]">
-        <div className="flex flex-col">
+      <div className="grid min-h-[520px] lg:grid-cols-[1fr_360px]">
+        <div className="flex min-h-[520px] flex-col">
           <div className="flex items-center justify-between bg-gray-950 px-6 py-5 text-white md:px-10">
             <div className="flex items-center gap-4">
               <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-sm font-black text-gray-950">
@@ -659,7 +694,7 @@ function TicketPreview({
             </div>
           </div>
 
-          <div className="relative flex-1 px-6 py-8 md:px-10">
+          <div className="relative flex flex-1 flex-col justify-between gap-8 px-6 pb-10 pt-8 md:px-10">
             <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_180px] md:items-start">
               <div>
                 <h1
@@ -671,7 +706,7 @@ function TicketPreview({
                   <span className="h-3 w-3 rounded-full bg-red-600" />
                   <span className="h-px flex-1 bg-gray-300" />
                 </div>
-                <p className="mt-7 line-clamp-2 text-xl leading-8 text-gray-600">
+                <p className="mt-6 line-clamp-2 text-xl leading-8 text-gray-600">
                   {exportData.title}
                 </p>
               </div>
@@ -683,33 +718,33 @@ function TicketPreview({
                   alt=""
                   aria-hidden="true"
                   draggable={false}
-                  className="h-36 w-48 object-contain md:h-44 md:w-56"
+                  className="h-36 w-56 object-contain md:h-48 md:w-72"
                 />
               </div>
             </div>
 
-            <dl className="mt-10 grid gap-5 sm:grid-cols-[180px_240px_minmax(220px,1fr)]">
-              <div>
+            <dl className="grid gap-5 sm:grid-cols-[160px_minmax(190px,240px)_minmax(190px,1fr)]">
+              <div className="min-w-0">
                 <dt className="text-xs font-bold uppercase text-gray-500">
                   Duration
                 </dt>
-                <dd className="mt-2 whitespace-nowrap text-2xl font-black text-gray-950">
+                <dd className="mt-2 truncate text-2xl font-black text-gray-950">
                   {trip.days} days
                 </dd>
               </div>
-              <div>
+              <div className="min-w-0">
                 <dt className="text-xs font-bold uppercase text-gray-500">
                   Budget
                 </dt>
-                <dd className="mt-2 whitespace-nowrap text-2xl font-black text-gray-950">
+                <dd className="mt-2 truncate text-2xl font-black text-gray-950">
                   {formatTicketBudget(trip.budget, destination)}
                 </dd>
               </div>
-              <div>
+              <div className="min-w-0">
                 <dt className="text-xs font-bold uppercase text-gray-500">
                   Issued
                 </dt>
-                <dd className="mt-2 whitespace-nowrap text-xl font-black leading-tight text-gray-950">
+                <dd className="mt-2 truncate text-xl font-black leading-tight text-gray-950">
                   {formatCreatedDate(trip.created_at)}
                 </dd>
               </div>
@@ -717,28 +752,28 @@ function TicketPreview({
           </div>
         </div>
 
-        <aside className="border-t border-dashed border-gray-300 bg-white px-6 py-8 lg:border-l lg:border-t-0 md:px-8">
+        <aside className="flex min-h-[520px] flex-col overflow-hidden border-t border-dashed border-gray-300 bg-white px-6 pb-9 pt-8 lg:border-l lg:border-t-0 md:px-8">
           <p className="mt-1 text-sm font-bold uppercase text-gray-500">
             AI Travel Pass
           </p>
-          <p className="mt-12 text-sm font-bold uppercase text-gray-500">
+          <p className="mt-10 text-sm font-bold uppercase text-gray-500">
             Highlights
           </p>
-          <ul className="mt-5 space-y-4 text-lg font-bold leading-6 text-gray-950">
+          <ul className="mt-5 space-y-3 text-base font-bold leading-5 text-gray-950">
             {highlights.map((highlight) => (
-              <li key={highlight} className="line-clamp-2">
+              <li key={highlight} className="line-clamp-2 min-h-10">
                 - {highlight}
               </li>
             ))}
           </ul>
 
-          <div className="mt-9">
+          <div className="mt-6">
             <TicketBarcode code={ticketCode} />
           </div>
 
-          <p className="mt-5 text-sm text-gray-500">TRIP PASS ID</p>
-          <p className="mt-2 text-2xl font-black text-gray-950">{ticketCode}</p>
-          <p className="mt-5 text-base font-semibold text-gray-500">
+          <p className="mt-4 text-sm text-gray-500">TRIP PASS ID</p>
+          <p className="mt-2 truncate text-2xl font-black text-gray-950">{ticketCode}</p>
+          <p className="mt-4 text-base font-semibold text-gray-500">
             Made with TripMuse
           </p>
         </aside>
