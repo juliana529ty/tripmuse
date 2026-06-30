@@ -23,6 +23,7 @@ type PdfDocument = InstanceType<typeof import("jspdf").jsPDF>;
 
 const TICKET_WIDTH = 1400;
 const TICKET_HEIGHT = 760;
+const TICKET_STAMP_SRC = "/assets/tripmuse-stamp.png";
 
 function formatCreatedDate(date?: string) {
   if (!date) return "Recently";
@@ -82,55 +83,6 @@ function formatTicketBudget(
   }
 
   return `${currency} ${rawValue}`;
-}
-
-function getTicketStampLabel(destination: string) {
-  const text = destination.toLowerCase();
-  const knownLabels: Array<[RegExp, string]> = [
-    [/universal|osaka/, "OSAKA"],
-    [/tokyo/, "TOKYO"],
-    [/kyoto/, "KYOTO"],
-    [/paris/, "PARIS"],
-    [/new york|nyc/, "NEW YORK"],
-    [/london/, "LONDON"],
-    [/rome/, "ROME"],
-    [/seoul/, "SEOUL"],
-    [/singapore/, "SINGAPORE"],
-  ];
-
-  const match = knownLabels.find(([pattern]) => pattern.test(text));
-
-  if (match) {
-    return match[1];
-  }
-
-  return destination
-    .split(/[\s,/-]+/)
-    .find((part) => part.length > 2)
-    ?.slice(0, 10)
-    .toUpperCase() || "TRIP";
-}
-
-function getTicketStampParts(destination: string) {
-  const text = destination.toLowerCase();
-  const location = getTicketStampLabel(destination);
-
-  if (/(japan|tokyo|osaka|kyoto|sapporo|okinawa|universal)/i.test(text)) {
-    return { location, country: "JAPAN · JP" };
-  }
-
-  if (/(paris|france)/i.test(text)) return { location, country: "FRANCE · FR" };
-  if (/(london|uk|united kingdom|england|scotland)/i.test(text)) {
-    return { location, country: "UNITED KINGDOM · GB" };
-  }
-  if (/(new york|nyc|usa|united states)/i.test(text)) {
-    return { location, country: "UNITED STATES · US" };
-  }
-  if (/(rome|italy)/i.test(text)) return { location, country: "ITALY · IT" };
-  if (/(seoul|korea)/i.test(text)) return { location, country: "KOREA · KR" };
-  if (/singapore/i.test(text)) return { location, country: "SINGAPORE · SG" };
-
-  return { location, country: "TRAVEL PASS · TM" };
 }
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -319,194 +271,51 @@ function drawTicketBarcode(
   });
 }
 
-function drawArcText(
-  context: CanvasRenderingContext2D,
-  text: string,
-  centerX: number,
-  centerY: number,
-  radius: number,
-  startAngle: number,
-  endAngle: number,
-  mode: "top" | "bottom"
-) {
-  const chars = text.split("");
-  const total = Math.max(chars.length - 1, 1);
+function loadTicketStampImage() {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
 
-  chars.forEach((char, index) => {
-    const angle = startAngle + ((endAngle - startAngle) * index) / total;
-    const radians = (angle * Math.PI) / 180;
-    const x = centerX + Math.cos(radians) * radius;
-    const y = centerY + Math.sin(radians) * radius;
-
-    context.save();
-    context.translate(x, y);
-    context.rotate(((mode === "top" ? angle + 90 : angle - 90) * Math.PI) / 180);
-    context.fillText(char, 0, 0);
-    context.restore();
+    image.decoding = "async";
+    image.loading = "eager";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to load TripMuse stamp image."));
+    image.src = TICKET_STAMP_SRC;
   });
 }
 
-function drawDestinationStamp(
+function drawContainedImage(
   context: CanvasRenderingContext2D,
-  destination: string,
-  centerX: number,
-  centerY: number
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number
 ) {
-  const accentColor = "#d92d25";
-  const stampParts = getTicketStampParts(destination);
-  const topArcSpan = Math.min(96, Math.max(56, stampParts.location.length * 9));
-  const bottomArcSpan = Math.min(130, Math.max(86, stampParts.country.length * 7));
+  const naturalWidth = image.naturalWidth || image.width;
+  const naturalHeight = image.naturalHeight || image.height;
 
-  context.save();
-  context.strokeStyle = accentColor;
-  context.fillStyle = accentColor;
-  context.lineWidth = 3;
-
-  [132, 118, 78].forEach((radius, index) => {
-    context.lineWidth = index === 0 ? 3 : 2;
-    context.beginPath();
-    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
-    context.stroke();
-  });
-
-  context.lineWidth = 2;
-  [...Array(4)].forEach((_, groupIndex) => {
-    const start = [25, 120, 205, 300][groupIndex];
-
-    for (let angle = start; angle <= start + 36; angle += 12) {
-      const radians = (angle * Math.PI) / 180;
-      context.beginPath();
-      context.moveTo(
-        centerX + Math.cos(radians) * 104,
-        centerY + Math.sin(radians) * 104
-      );
-      context.lineTo(
-        centerX + Math.cos(radians) * 116,
-        centerY + Math.sin(radians) * 116
-      );
-      context.stroke();
-    }
-  });
-
-  context.font = "800 25px Arial, Helvetica, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  drawArcText(
-    context,
-    stampParts.location,
-    centerX,
-    centerY,
-    104,
-    270 - topArcSpan / 2,
-    270 + topArcSpan / 2,
-    "top"
-  );
-
-  context.font = "800 18px Arial, Helvetica, sans-serif";
-  drawArcText(
-    context,
-    stampParts.country,
-    centerX,
-    centerY,
-    104,
-    90 + bottomArcSpan / 2,
-    90 - bottomArcSpan / 2,
-    "bottom"
-  );
-
-  context.font = "800 22px Arial, Helvetica, sans-serif";
-  context.fillText("JOURNEY", centerX, centerY + 78);
-
-  [-36, 36].forEach((offsetX) => {
-    context.beginPath();
-    context.moveTo(centerX + offsetX, centerY - 72);
-    context.lineTo(centerX + offsetX + 5, centerY - 60);
-    context.lineTo(centerX + offsetX + 18, centerY - 56);
-    context.lineTo(centerX + offsetX + 5, centerY - 52);
-    context.lineTo(centerX + offsetX, centerY - 40);
-    context.lineTo(centerX + offsetX - 5, centerY - 52);
-    context.lineTo(centerX + offsetX - 18, centerY - 56);
-    context.lineTo(centerX + offsetX - 5, centerY - 60);
-    context.closePath();
-    context.stroke();
-  });
-
-  context.lineWidth = 3;
-  context.strokeRect(centerX - 42, centerY + 2, 84, 46);
-  context.beginPath();
-  context.arc(centerX, centerY + 2, 42, Math.PI, Math.PI * 2);
-  context.stroke();
-
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(centerX - 24, centerY + 48);
-  context.lineTo(centerX - 24, centerY + 18);
-  context.moveTo(centerX + 24, centerY + 48);
-  context.lineTo(centerX + 24, centerY + 18);
-  context.stroke();
-
-  context.lineWidth = 3;
-  context.beginPath();
-  context.arc(centerX, centerY - 38, 30, 0, Math.PI * 2);
-  context.stroke();
-  context.lineWidth = 2;
-  context.beginPath();
-  context.moveTo(centerX - 30, centerY - 38);
-  context.lineTo(centerX + 30, centerY - 38);
-  context.moveTo(centerX, centerY - 68);
-  context.quadraticCurveTo(centerX - 16, centerY - 38, centerX, centerY - 8);
-  context.moveTo(centerX, centerY - 68);
-  context.quadraticCurveTo(centerX + 16, centerY - 38, centerX, centerY - 8);
-  context.stroke();
-
-  context.lineWidth = 3;
-  context.beginPath();
-  context.moveTo(centerX - 98, centerY + 58);
-  context.bezierCurveTo(
-    centerX - 62,
-    centerY + 10,
-    centerX - 24,
-    centerY + 78,
-    centerX + 16,
-    centerY + 28
-  );
-  context.bezierCurveTo(
-    centerX + 40,
-    centerY - 2,
-    centerX + 70,
-    centerY - 2,
-    centerX + 96,
-    centerY + 34
-  );
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(centerX - 88, centerY + 58);
-  context.lineTo(centerX - 80, centerY + 38);
-  context.moveTo(centerX - 58, centerY + 30);
-  context.lineTo(centerX - 49, centerY + 54);
-  context.moveTo(centerX + 74, centerY + 16);
-  context.lineTo(centerX + 65, centerY + 46);
-  context.stroke();
-
-  for (let index = 0; index < 4; index += 1) {
-    context.beginPath();
-    const y = centerY + 68 + index * 21;
-
-    for (let t = 0; t < 190; t += 4) {
-      const x = centerX - 232 + t;
-      const waveY = y + Math.sin(t / 18) * 8;
-
-      if (t === 0) {
-        context.moveTo(x, waveY);
-      } else {
-        context.lineTo(x, waveY);
-      }
-    }
-
-    context.stroke();
+  if (!naturalWidth || !naturalHeight) {
+    throw new Error("TripMuse stamp image has no readable dimensions.");
   }
 
+  const imageRatio = naturalWidth / naturalHeight;
+  const boxRatio = width / height;
+  let drawWidth = width;
+  let drawHeight = height;
+
+  if (imageRatio > boxRatio) {
+    drawHeight = width / imageRatio;
+  } else {
+    drawWidth = height * imageRatio;
+  }
+
+  const drawX = x + (width - drawWidth) / 2;
+  const drawY = y + (height - drawHeight) / 2;
+
+  context.save();
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
   context.restore();
 }
 
@@ -528,6 +337,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
       ? exportData.highlights.slice(0, 3)
       : ["AI itinerary", "Travel tips", "Budget guidance"];
   const ticketCode = createTicketCode(trip);
+  const stampImage = await loadTicketStampImage();
 
   context.fillStyle = "#f3f4f6";
   context.fillRect(0, 0, TICKET_WIDTH, TICKET_HEIGHT);
@@ -562,11 +372,7 @@ async function createTripTicketImage(trip: Trip, exportData: TripExportData) {
   context.fillStyle = "#030712";
   drawFittedCanvasText(context, destination, 106, 292, 560, 2, 78, 50);
 
-  context.save();
-  context.translate(830, 350);
-  context.scale(0.78, 0.78);
-  drawDestinationStamp(context, destination, 0, 0);
-  context.restore();
+  drawContainedImage(context, stampImage, 690, 230, 270, 210);
 
   context.fillStyle = "#d92d25";
   context.beginPath();
@@ -793,76 +599,6 @@ function saveSharedTripPdf(
   });
 }
 
-function DestinationStampSvg({
-  country,
-  location,
-}: {
-  country: string;
-  location: string;
-}) {
-  return (
-    <svg
-      viewBox="0 0 300 300"
-      aria-hidden="true"
-      className="h-36 w-36 text-red-600 md:h-44 md:w-44"
-    >
-      <defs>
-        <path id="ticket-stamp-top" d="M 84 130 A 66 66 0 0 1 216 130" />
-        <path id="ticket-stamp-bottom" d="M 224 171 A 76 76 0 0 1 76 171" />
-      </defs>
-      <g fill="none" stroke="currentColor" strokeLinecap="round">
-        <circle cx="150" cy="150" r="118" strokeWidth="3" />
-        <circle cx="150" cy="150" r="105" strokeWidth="2" />
-        <circle cx="150" cy="150" r="70" strokeWidth="2" />
-        {[34, 46, 58, 124, 136, 148, 214, 226, 238, 304, 316, 328].map((angle) => {
-          const radians = (angle * Math.PI) / 180;
-          const x1 = 150 + Math.cos(radians) * 94;
-          const y1 = 150 + Math.sin(radians) * 94;
-          const x2 = 150 + Math.cos(radians) * 105;
-          const y2 = 150 + Math.sin(radians) * 105;
-
-          return (
-            <line
-              key={angle}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
-              strokeWidth="2"
-            />
-          );
-        })}
-        <path d="M108 151h84v46h-84z" strokeWidth="3" />
-        <path d="M108 151a42 42 0 0 1 84 0" strokeWidth="3" />
-        <path d="M126 197v-30M174 197v-30" strokeWidth="2" />
-        <circle cx="150" cy="115" r="28" strokeWidth="3" />
-        <path d="M122 115h56M150 87c-15 20-15 36 0 56M150 87c15 20 15 36 0 56" strokeWidth="2" />
-        <path d="M53 205c33-49 74 21 112-27 25-32 55-21 82 16" strokeWidth="3" />
-        <path d="M62 205v-19M91 190v-20M205 186v-22M232 198v-23" strokeWidth="2" />
-        <path d="M112 70l5 12 13 4-13 4-5 12-5-12-13-4 13-4zM202 76l4 9 10 3-10 3-4 9-4-9-10-3 10-3z" strokeWidth="2" />
-        <path d="M-6 213c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
-        <path d="M-6 232c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
-        <path d="M-6 251c37-20 73-20 110 0s73 20 110 0" strokeWidth="2" />
-      </g>
-      <g fill="currentColor" fontFamily="Arial, Helvetica, sans-serif" fontWeight="800">
-        <text fontSize="22">
-          <textPath href="#ticket-stamp-top" startOffset="50%" textAnchor="middle">
-            {location}
-          </textPath>
-        </text>
-        <text fontSize="16">
-          <textPath href="#ticket-stamp-bottom" startOffset="50%" textAnchor="middle">
-            {country}
-          </textPath>
-        </text>
-        <text x="150" y="232" textAnchor="middle" fontSize="18">
-          JOURNEY
-        </text>
-      </g>
-    </svg>
-  );
-}
-
 function TicketBarcode({ code }: { code: string }) {
   return (
     <div className="flex h-24 items-end gap-[5px] overflow-hidden">
@@ -899,7 +635,6 @@ function TicketPreview({
       ? exportData.highlights.slice(0, 3)
       : ["AI itinerary", "Travel tips", "Budget guidance"];
   const ticketCode = createTicketCode(trip);
-  const stampParts = getTicketStampParts(destination);
   const destinationLength = destination.length;
   const destinationTitleClass =
     destinationLength > 30
@@ -942,9 +677,13 @@ function TicketPreview({
               </div>
 
               <div className="hidden justify-self-end md:block">
-                <DestinationStampSvg
-                  country={stampParts.country}
-                  location={stampParts.location}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={TICKET_STAMP_SRC}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                  className="h-36 w-48 object-contain md:h-44 md:w-56"
                 />
               </div>
             </div>
