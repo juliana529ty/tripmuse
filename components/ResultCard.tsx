@@ -40,7 +40,7 @@ type ExportDay = {
   tip: string;
 };
 
-type TripExportData = {
+export type TripExportData = {
   title: string;
   destination: string;
   days: ExportDay[];

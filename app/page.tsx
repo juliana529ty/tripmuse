@@ -205,10 +205,8 @@ export default function Home() {
       </div>
 
       <main>
-        <Hero />
-
-        <section id="planner" className="bg-white py-16">
-          <div className="mx-auto max-w-5xl px-5">
+        <Hero
+          planner={
             <PlannerForm
               destination={destination}
               days={days}
@@ -220,8 +218,8 @@ export default function Home() {
               onBudgetChange={setBudget}
               onGenerate={generatePlan}
             />
-          </div>
-        </section>
+          }
+        />
 
         <section className="py-10">
           <div className="mx-auto max-w-5xl px-5">

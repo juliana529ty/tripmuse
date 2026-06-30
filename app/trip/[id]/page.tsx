@@ -7,6 +7,10 @@ import type { User } from "@supabase/supabase-js";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import ResultCard, { getTripExportData } from "@/components/ResultCard";
+import {
+  createTravelPostcardImage,
+  getTravelPostcardFileName,
+} from "@/lib/createTravelPostcard";
 import { supabase } from "@/lib/supabase";
 
 type Trip = {
@@ -924,6 +928,7 @@ export default function TripDetailPage() {
   const [sharing, setSharing] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [exportingTicket, setExportingTicket] = useState(false);
+  const [exportingPostcard, setExportingPostcard] = useState(false);
   const [updatingFavorite, setUpdatingFavorite] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1078,6 +1083,31 @@ export default function TripDetailPage() {
       showToast("Ticket export failed. Please try again.");
     } finally {
       setExportingTicket(false);
+    }
+  };
+
+  const exportPostcard = async () => {
+    if (!trip || exportingPostcard) return;
+
+    setExportingPostcard(true);
+
+    try {
+      const publicShareUrl = trip.public
+        ? `${window.location.origin}/share/${trip.id}`
+        : undefined;
+      const blob = await createTravelPostcardImage({
+        exportData,
+        publicShareUrl,
+        trip,
+      });
+
+      downloadBlob(blob, getTravelPostcardFileName(trip));
+      showToast("Postcard downloaded.");
+    } catch (error) {
+      console.error("Postcard export failed:", error);
+      showToast("Postcard export failed. Please try again.");
+    } finally {
+      setExportingPostcard(false);
     }
   };
 
@@ -1397,6 +1427,18 @@ export default function TripDetailPage() {
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                 )}
                 {exportingPdf ? "Exporting PDF..." : "Export PDF"}
+              </button>
+
+              <button
+                type="button"
+                onClick={exportPostcard}
+                disabled={exportingPostcard}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingPostcard && (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                )}
+                {exportingPostcard ? "Creating Postcard..." : "Download Postcard"}
               </button>
 
               <button

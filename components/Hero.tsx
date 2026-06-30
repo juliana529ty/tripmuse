@@ -1,6 +1,11 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
-export default function Hero() {
+type HeroProps = {
+  planner?: ReactNode;
+};
+
+export default function Hero({ planner }: HeroProps) {
   return (
     <section className="border-b border-gray-200 bg-white px-5 py-16 text-center md:py-20">
       <div className="mx-auto max-w-5xl">
@@ -21,21 +26,27 @@ export default function Hero() {
           budget guidance.
         </p>
 
-        <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <a
-            href="#planner"
-            className="inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-gray-950/15 transition hover:bg-gray-800 sm:w-auto"
-          >
-            Plan my trip
-          </a>
+        {planner ? (
+          <div id="planner" className="mt-9">
+            {planner}
+          </div>
+        ) : (
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <a
+              href="#planner"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-gray-950 px-7 py-4 text-sm font-semibold text-white shadow-lg shadow-gray-950/15 transition hover:bg-gray-800 sm:w-auto"
+            >
+              Plan my trip
+            </a>
 
-          <Link
-            href="/dashboard"
-            className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-7 py-4 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 sm:w-auto"
-          >
-            View my trips
-          </Link>
-        </div>
+            <Link
+              href="/dashboard"
+              className="inline-flex w-full items-center justify-center rounded-xl border border-gray-200 bg-white px-7 py-4 text-sm font-semibold text-gray-700 shadow-sm transition hover:border-gray-300 hover:bg-gray-50 sm:w-auto"
+            >
+              View my trips
+            </Link>
+          </div>
+        )}
 
         <div className="mx-auto mt-12 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
